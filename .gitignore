@@ -1,0 +1,49 @@
+# CCES / Eclipse workspace (if this tree is also the IDE workspace)
+.metadata/
+.recommenders/
+RemoteSystemsTempFiles/
+.CCES/
+
+# Per-project Eclipse user prefs and debug launches
+.settings/
+*.launch
+
+# CCES build configurations (SHARC + ARM/A5)
+Debug/
+Release/
+debug/
+release/
+
+# SHARC toolchain artifacts (normally under Debug/Release; keep as a net)
+*.doj
+*.dlb
+*.ldr
+*.ovl
+*.sm
+*.map
+*.xml.map
+
+# Built executables. Device Programmer ships a few DXEs next to the project
+# files (not under Debug/); keep those.
+*.dxe
+!Device_Programmer/**/*.dxe
+
+# ARM GCC leftovers that sometimes appear outside Debug/Release
+*.o
+*.d
+*.elf
+*.hex
+*.i
+*.srec
+*.su
+
+# Editor / OS
+*~
+*.bak
+*.swp
+*.tmp
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+*.code-workspace
