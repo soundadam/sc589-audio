@@ -1,8 +1,8 @@
 # ADR 0001: 在 Mac 上不经调试器运行和测试板卡（UART 启动）
 
-- 状态：已采用（B2 在 SC589 上验证通过，SC573 未验证）
+- 状态：已采用（B2 在 SC589 上验证通过）
 - 日期：2026-09-24
-- 适用：`apps/audio_loopback`，ADSP-SC589 / ADSP-SC573 EZ-Kit
+- 适用：`apps/audio_loopback`，ADSP-SC589 EZ-Kit
 
 ## 背景
 
@@ -29,12 +29,12 @@
 
 ### 仓库中已有的依据
 
-- EZ-Kit 板载 USB 转串口接 UART0：SC589 为 P8，SC573 为 P7
+- EZ-Kit 板载 USB 转串口接 UART0：SC589 为 P8
   （见 `services/stdio/stdio_char_echo/Readme_stdio_char_echo.html`）。
 - ADI 官方流程已支持"生成 ldr → 写 Flash → BMODE=1 启动 → 输出到 UART"
   （见 `Power_On_Self_Test/Readme/Readme_Power_On_Self_Test_SC589.html`）。
 - 脱离调试器后需要初始化代码来配置 CGU/DDR（调试会话中由 preload 完成），使用 CCES 自带的
-  `SHARC\ldr\ezkitSC589_initcode_core0_v10`（SC573 为 `ezkitSC573_initcode_core0`）。
+  `SHARC\ldr\ezkitSC589_initcode_core0_v10`。
 - printf 重定向到 UART 的参考实现：`services/stdio/stdio_char_echo/char_echo.c`
   （`adi_stdio_RegisterUART` / `adi_stdio_OpenDevice` / `adi_stdio_RedirectStream`）。
 - `apps/audio_loopback/SC589/SoftConfig_SC589.c` 中 `~UART0_EN`、`~UART0_FLOW_EN` 已设为 0（启用 UART0 和流控）。
@@ -55,7 +55,7 @@
 
 ## 验证步骤（按风险从低到高）
 
-1. **串口通路**：P8/P7 接到 Mac，确认出现 `/dev/cu.usbserial-*`。板载转串口是 FTDI FT232R，macOS 自带驱动即可识别。在 Windows 上用 ICE 运行 stdio_char_echo，
+1. **串口通路**：P8 接到 Mac，确认出现 `/dev/cu.usbserial-*`。板载转串口是 FTDI FT232R，macOS 自带驱动即可识别。在 Windows 上用 ICE 运行 stdio_char_echo，
    在 Mac 上执行 `screen /dev/cu.usbserial-XXX 57600` 确认能收发。
 2. **B1：程序脱离调试器能跑**：Windows 上用 `tools/make_ldr.ps1` 生成 ldr，用 CLDP 写入 Flash
    （`cldp -proc ADSP-SC589 -core 1 -emu 1000 -driver Device_Programmer/sc589/sharc/sc589_w25q128fv_dpia_Core1/sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file adc_dac_playback_SC589_spimaster.ldr`），
@@ -66,7 +66,6 @@
 
 ## 待确认事项 / 风险
 
-- SC573 的 UART 启动 BMODE 取值需查 SC57x 数据手册。
 - 在没有调试器时，重定向之前调用的 `printf` 行为不确定，所以重定向要放在最前面。
 - 每次运行需要手动按复位键（除非后续引出复位控制）。
 
