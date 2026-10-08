@@ -27,15 +27,8 @@
 #define UART0_PORTC_MUX_MASK        ((3u << 26) | (3u << 28) | (3u << 30))
 #define UART0_PORTD_FER_BITS        (1u << 0)
 #define UART0_PORTD_MUX_MASK        (3u << 0)
-#elif defined(__ADSPSC573_FAMILY__)
-/* TX PF08, RX PF09 (MUX function 0); RTS PD05, CTS PD06 (MUX function 2) */
-#define UART0_PORTF_FER_BITS        ((1u << 8) | (1u << 9))
-#define UART0_PORTF_MUX_MASK        ((3u << 16) | (3u << 18))
-#define UART0_PORTD_FER_BITS        ((1u << 5) | (1u << 6))
-#define UART0_PORTD_MUX_MASK        ((3u << 10) | (3u << 12))
-#define UART0_PORTD_MUX_VALUE       ((2u << 10) | (2u << 12))
 #else
-#error "uart_console.c: UART0 pin mapping is only known for ADSP-SC589 and ADSP-SC573"
+#error "uart_console.c: UART0 pin mapping is only known for ADSP-SC589"
 #endif
 
 static ADI_STDIO_DEVICE_HANDLE hStdioJtag = NULL;
@@ -43,17 +36,10 @@ static ADI_STDIO_DEVICE_HANDLE hStdioUart = NULL;
 
 static void Uart0PinMux(void)
 {
-#if defined(__ADSPSC589_FAMILY__)
 	*pREG_PORTC_MUX &= ~UART0_PORTC_MUX_MASK;
 	*pREG_PORTD_MUX &= ~UART0_PORTD_MUX_MASK;
 	*pREG_PORTC_FER |= UART0_PORTC_FER_BITS;
 	*pREG_PORTD_FER |= UART0_PORTD_FER_BITS;
-#else
-	*pREG_PORTF_MUX &= ~UART0_PORTF_MUX_MASK;
-	*pREG_PORTD_MUX = (*pREG_PORTD_MUX & ~UART0_PORTD_MUX_MASK) | UART0_PORTD_MUX_VALUE;
-	*pREG_PORTF_FER |= UART0_PORTF_FER_BITS;
-	*pREG_PORTD_FER |= UART0_PORTD_FER_BITS;
-#endif
 }
 
 uint32_t UartConsoleInit(void)

@@ -4,7 +4,7 @@
  *
  * @details
  *            Without an emulator the JTAG console is gone, so printf output
- *            only reaches the host through UART0 (SC589: P8, SC573: P7).
+ *            only reaches the host through UART0 (P8 on the SC589 EZ-Board).
  *            Host side: 57600 8N1 with RTS/CTS, e.g.
  *            `screen /dev/cu.usbserial-XXX 57600`.
  */
