@@ -30,12 +30,12 @@
 ### 仓库中已有的依据
 
 - EZ-Kit 板载 USB 转串口接 UART0：SC589 为 P8
-  （见 `services/stdio/stdio_char_echo/Readme_stdio_char_echo.html`）。
+  （见 `vendor/adi/examples/services/stdio/stdio_char_echo/Readme_stdio_char_echo.html`）。
 - ADI 官方流程已支持"生成 ldr → 写 Flash → BMODE=1 启动 → 输出到 UART"
-  （见 `Power_On_Self_Test/Readme/Readme_Power_On_Self_Test_SC589.html`）。
+  （见 `vendor/adi/examples/Power_On_Self_Test/Readme/Readme_Power_On_Self_Test_SC589.html`）。
 - 脱离调试器后需要初始化代码来配置 CGU/DDR（调试会话中由 preload 完成），使用 CCES 自带的
   `SHARC\ldr\ezkitSC589_initcode_core0_v10`。
-- printf 重定向到 UART 的参考实现：`services/stdio/stdio_char_echo/char_echo.c`
+- printf 重定向到 UART 的参考实现：`vendor/adi/examples/services/stdio/stdio_char_echo/char_echo.c`
   （`adi_stdio_RegisterUART` / `adi_stdio_OpenDevice` / `adi_stdio_RedirectStream`）。
 - `apps/audio_loopback/SC589/SoftConfig_SC589.c` 中 `~UART0_EN`、`~UART0_FLOW_EN` 已设为 0（启用 UART0 和流控）。
 - Core0（ARM）通过 `adi_core_enable` 启动两个 SHARC 核，多核可打包成一个 ldr。
@@ -58,7 +58,7 @@
 1. **串口通路**：P8 接到 Mac，确认出现 `/dev/cu.usbserial-*`。板载转串口是 FTDI FT232R，macOS 自带驱动即可识别。在 Windows 上用 ICE 运行 stdio_char_echo，
    在 Mac 上执行 `screen /dev/cu.usbserial-XXX 57600` 确认能收发。
 2. **B1：程序脱离调试器能跑**：Windows 上用 `tools/make_ldr.ps1` 生成 ldr，用 CLDP 写入 Flash
-   （`cldp -proc ADSP-SC589 -core 1 -emu 1000 -driver Device_Programmer/sc589/sharc/sc589_w25q128fv_dpia_Core1/sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file adc_dac_playback_SC589_spimaster.ldr`），
+   （`cldp -proc ADSP-SC589 -core 1 -emu 1000 -driver vendor/adi/examples/Device_Programmer/sc589/sharc/sc589_w25q128fv_dpia_Core1/sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file adc_dac_playback_SC589_spimaster.ldr`），
    BMODE=1，先在 Mac 上运行 `python3 tools/uart_log.py --log run.log`，再复位；看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
 3. **B2：Mac 直接 UART 启动**：BMODE 切到 UART0 host 启动（SC589 为 7，见数据手册 Table 9 Boot Modes），
    运行 `python3 tools/uart_boot.py <app>.ldr --wait 60`，在它等待时按复位。发送约 12 秒，之后串口打印

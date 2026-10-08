@@ -19,8 +19,8 @@ ADI 官方代码，只读参考：
 
 | 目录 | 内容 |
 |---|---|
-| `drivers/` `services/` `Device_Programmer/` `Power_On_Self_Test/` | 导入的 CCES 示例，与初始导入的提交（`1721959`）保持一致 |
-| `adi_src/` | 示例链接的驱动源码，见 [adi_src/README.md](adi_src/README.md) |
+| `vendor/adi/examples/` | 导入的 CCES 示例（`drivers/` `services/` `Device_Programmer/` `Power_On_Self_Test/`），与初始导入的提交（`1721959`）内容一致 |
+| `vendor/adi/sources/` | 示例链接的驱动源码，见 [vendor/adi/sources/README.md](vendor/adi/sources/README.md) |
 
 ## 本地检查
 
