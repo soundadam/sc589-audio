@@ -26,7 +26,7 @@ release/
 # Built executables. Device Programmer ships a few DXEs next to the project
 # files (not under Debug/); keep those.
 *.dxe
-!Device_Programmer/**/*.dxe
+!vendor/adi/examples/Device_Programmer/**/*.dxe
 
 # ARM GCC leftovers that sometimes appear outside Debug/Release
 *.o
@@ -48,5 +48,5 @@ Desktop.ini
 .vscode/
 *.code-workspace
 
-# Loader streams copied back by tools/remote_build.sh
+# Loader streams copied back by host/build/remote_build.sh
 /build/

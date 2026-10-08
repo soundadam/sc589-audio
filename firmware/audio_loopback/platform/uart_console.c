@@ -8,7 +8,7 @@
 #include <services/stdio/adi_stdio.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "uart_console.h"
+#include "platform/uart_console.h"
 
 /* EZ-Board CLKIN */
 #define CLKIN_HZ                    (25000000u)
@@ -18,7 +18,8 @@
 
 /*
  * UART0 pins, taken from the Pin Multiplexing add-in output of
- * services/stdio/stdio_char_echo/<board>/sharc/stdio_char_echo_Core1. Applied read-modify-write
+ * vendor/adi/examples/services/stdio/stdio_char_echo/<board>/sharc/stdio_char_echo_Core1.
+ * Applied read-modify-write
  * so pins configured elsewhere keep their function.
  */
 #if defined(__ADSPSC589_FAMILY__)
