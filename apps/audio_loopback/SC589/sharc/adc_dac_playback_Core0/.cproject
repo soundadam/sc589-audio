@@ -78,6 +78,10 @@
 								<option id="arm.loader.option.sirevision.1255176509" name="-si-revision" superClass="arm.loader.option.sirevision" value=" any" valueType="string"/>
 								<option id="arm.loader.option.proc.794105898" name="-proc" superClass="arm.loader.option.proc" value=" ADSP-SC589" valueType="string"/>
 							</tool>
+							<tool id="arm.toolchain.bare.preprocessor.995023788" name="CrossCore ARM Bare Metal Preprocessor" superClass="arm.toolchain.bare.preprocessor"/>
+							<tool id="arm.deviceprogrammer.1161678832" name="CrossCore ARM Device Programmer" superClass="arm.deviceprogrammer">
+								<option id="deviceprogrammer.option.proc.1007050398" name="-proc" superClass="deviceprogrammer.option.proc" value=" ADSP-SC589" valueType="string"/>
+							</tool>
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
@@ -166,6 +170,10 @@
 								<option id="arm.loader.option.sirevision.1379350482" name="-si-revision" superClass="arm.loader.option.sirevision" value=" any" valueType="string"/>
 								<option id="arm.loader.option.proc.227755163" name="-proc" superClass="arm.loader.option.proc" value=" ADSP-SC589" valueType="string"/>
 							</tool>
+							<tool id="arm.toolchain.bare.preprocessor.1941547147" name="CrossCore ARM Bare Metal Preprocessor" superClass="arm.toolchain.bare.preprocessor"/>
+							<tool id="arm.deviceprogrammer.1732245170" name="CrossCore ARM Device Programmer" superClass="arm.deviceprogrammer">
+								<option id="deviceprogrammer.option.proc.799990175" name="-proc" superClass="deviceprogrammer.option.proc" value=" ADSP-SC589" valueType="string"/>
+							</tool>
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
@@ -201,4 +209,5 @@
 		</scannerConfigBuildInfo>
 	</storageModule>
 	<storageModule moduleId="refreshScope"/>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 </cproject>

@@ -47,3 +47,6 @@ Thumbs.db
 Desktop.ini
 .vscode/
 *.code-workspace
+
+# Loader streams copied back by tools/remote_build.sh
+/build/
