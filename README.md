@@ -9,7 +9,7 @@ CCES 构建和需要单步调试的时候用 Windows 机器（见 [ADR 0001](doc
 
 | 目录 | 内容 |
 |---|---|
-| `firmware/audio_loopback/` | ADC → 处理 → DAC 回环程序：`adc_dac_playback.c` 是入口，`tone_check.c` 是模拟回环自检 |
+| `firmware/audio_loopback/` | ADC → 处理 → DAC 回环程序：`adc_dac_playback.c` 是入口 |
 | `firmware/audio_loopback/dsp/` | 信号处理（`audio_process.c`），纯 C99，不依赖 CCES 和板卡 |
 | `firmware/audio_loopback/dsp/test/` | `dsp/` 的主机端测试 |
 | `firmware/audio_loopback/platform/` | 板卡、codec、SPORT/DMA 音频通路和串口控制台 |
