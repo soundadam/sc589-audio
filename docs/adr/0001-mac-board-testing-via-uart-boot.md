@@ -55,18 +55,18 @@
 
 ## 验证步骤（按风险从低到高）
 
-1. **串口通路**：P8/P7 接到 Mac，确认出现 `/dev/cu.usbserial-*`。在 Windows 上用 ICE 运行 stdio_char_echo，
+1. **串口通路**：P8/P7 接到 Mac，确认出现 `/dev/cu.usbserial-*`。板载转串口是 FTDI FT232R，macOS 自带驱动即可识别。在 Windows 上用 ICE 运行 stdio_char_echo，
    在 Mac 上执行 `screen /dev/cu.usbserial-XXX 57600` 确认能收发。
 2. **B1：程序脱离调试器能跑**：Windows 上用 `tools/make_ldr.ps1` 生成 ldr，用 CLDP 写入 Flash
    （`cldp -proc ADSP-SC589 -core 1 -emu 1000 -driver Device_Programmer/sc589/sharc/sc589_w25q128fv_dpia_Core1/sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file adc_dac_playback_SC589_spimaster.ldr`），
    BMODE=1，先在 Mac 上运行 `python3 tools/uart_log.py --log run.log`，再复位；看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
-3. **B2：Mac 直接 UART 启动**：BMODE 切到 UART 从机启动，按复位后运行 `python tools/uart_boot.py <app>.ldr`。
+3. **B2：Mac 直接 UART 启动**：BMODE 切到 UART0 host 启动（SC589 为 7，见数据手册 Table 9 Boot Modes），按复位后运行 `python tools/uart_boot.py <app>.ldr`。
 
 ## 待确认事项 / 风险
 
-- UART 从机启动对应的 BMODE 取值（SC589 预计为 3，SC573 需查手册）。
+- SC573 的 UART 启动 BMODE 取值需查 SC57x 数据手册。
 - 开关由软件在运行时配置；芯片还在 Boot ROM 阶段时，UART0 和流控在 EZ-Board 上电默认状态下是否已接通，需对照 EZ-Board 手册确认。若默认未接通，B2 不可行，退回 B1。
-- Boot ROM 的握手字节和对 CTS/RTS 的要求，以及板载 USB 转串口芯片在 macOS 上的驱动情况。
+- Boot ROM 的握手字节和对 CTS/RTS 的要求。
 - 在没有调试器时，重定向之前调用的 `printf` 行为不确定，所以重定向要放在最前面。
 - 每次运行需要手动按复位键（除非后续引出复位控制）。
 
