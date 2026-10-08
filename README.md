@@ -12,7 +12,7 @@ CCES 构建和需要单步调试的时候用 Windows 机器（见 [ADR 0001](doc
 | `apps/audio_loopback/` | ADC → 处理 → DAC 回环程序。`audio_process.c` 是信号处理部分，其余是板卡、codec、SPORT 和串口控制台 |
 | `apps/audio_loopback/host_test/` | `audio_process.c` 的主机端测试，不需要 CCES 和板卡 |
 | `apps/audio_loopback/SC589/sharc/` | 三个核的 CCES 工程，源码通过链接引用上一级目录 |
-| `tools/` | Mac 端的 UART 启动和日志工具（`uart_boot.py`、`uart_log.py`）、Windows 端的 ldr 打包脚本（`make_ldr.ps1`）；用法写在各脚本头部 |
+| `tools/` | Mac 端的 UART 启动和日志工具（`uart_boot.py`、`uart_log.py`）、远端构建（`remote_build.sh` 及它在 Windows 上调用的 `remote_build.ps1`、`make_ldr.ps1`）；用法写在各脚本头部 |
 | `docs/adr/` | 架构决策记录 |
 
 ADI 官方代码，只读参考：
@@ -32,5 +32,12 @@ make check
 
 ## 在板卡上运行
 
-步骤见 [ADR 0001](docs/adr/0001-mac-board-testing-via-uart-boot.md) 的「验证步骤」。
-Mac 端工具依赖 pyserial：`pip install -r tools/requirements.txt`。
+板卡 BMODE 拨到 UART 启动，然后：
+
+```bash
+make board
+```
+
+在 Windows 主机上用当前工作树（含未提交的改动）构建，取回 `.ldr` 到 `build/`，通过 UART 启动板卡，
+按串口输出判定通过或失败。看到 `uart_boot.py` 开始等待时按复位。只构建不上板用 `tools/remote_build.sh`。
+其余启动方式见 [ADR 0001](docs/adr/0001-mac-board-testing-via-uart-boot.md) 的「验证步骤」。
