@@ -20,6 +20,10 @@ It provides information needed to link your code. It can be used to configure me
 			<component-description/>
 			<product name="ADSP-SC5xx EZ-KIT Lite v2.0.2" version="2.0.2"/>
 		</component>
+		<component id="com.analog.crosscore.addins.ssldd.stdio.sharcxi" name="STDIO Service for SHARC" version="1.0.0" visible="true">
+			<component-description><![CDATA[This add-in provides Analog Devices' implementation of the STDIO Service]]></component-description>
+			<product name="Analog Devices System Services and Device Drivers" version="1.0.0"/>
+		</component>
 	</installedComponents>
 	<configurations>
 		<configuration id="com.analog.sourcegen.component.startup_ldf">
