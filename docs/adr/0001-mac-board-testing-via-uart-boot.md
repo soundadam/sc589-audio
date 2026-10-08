@@ -42,13 +42,11 @@
 
 ### 需要的改动
 
-1. **串口输出**：在运行音频处理的 SHARC 核上，启动后第一时间把 stdio 重定向到 UART0。当前的 `printf` 走 JTAG 控制台，没有调试器时看不到。
-2. **Core0 loader 配置**（`adc_dac_playback_Core0`）：
-   - Build Artifact 改为 Loader File；
-   - Boot mode：B1 用 SPI master，B2 用 UART；格式 binary；
-   - 附加 Core1、Core2 的 `.dxe`；
-   - Initialization 文件使用上面的 Post_Init。
-   - 建议为 B1/B2 各建一个构建配置，避免来回改。
+1. **串口输出**：Core1 的 `main` 在软开关配置之后调用 `UartConsoleInit()`，把 stdio 重定向到 UART0
+   （`apps/audio_loopback/uart_console.h`）。没有调试器时 JTAG 控制台看不到 `printf`。
+2. **生成 ldr**：`tools/make_ldr.ps1 -Board SC589`（Windows，先编译三个核的 Debug）用 elfloader 把
+   Core0/1/2 和 Post_Init 打包成 SPI master（B1）与 UART slave（B2）两份 binary ldr，不改工程配置。
+   三个核也可以用 CCES headless builder 在命令行编译，用法写在脚本头部。
 3. **Mac 端脚本**（pyserial，`pip install -r tools/requirements.txt`）：
    - `tools/uart_log.py`：读取串口、保存日志，按 `All done` / `Error` 给出通过或失败的退出码（B1 用）。
    - [ ] `tools/uart_boot.py`（B2）：自动波特率握手（发送检测字节，打印 Boot ROM 回应便于排查），
@@ -59,8 +57,8 @@
 
 1. **串口通路**：P8/P7 接到 Mac，确认出现 `/dev/cu.usbserial-*`。在 Windows 上用 ICE 运行 stdio_char_echo，
    在 Mac 上执行 `screen /dev/cu.usbserial-XXX 57600` 确认能收发。
-2. **B1：程序脱离调试器能跑**：Windows 上生成 ldr，用 CLDP 写入 Flash
-   （`cldp -proc ADSP-SC589 -core 1 -emu ICE-2000 -driver sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file <app>.ldr`），
+2. **B1：程序脱离调试器能跑**：Windows 上用 `tools/make_ldr.ps1` 生成 ldr，用 CLDP 写入 Flash
+   （`cldp -proc ADSP-SC589 -core 1 -emu 1000 -driver Device_Programmer/sc589/sharc/sc589_w25q128fv_dpia_Core1/sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file adc_dac_playback_SC589_spimaster.ldr`），
    BMODE=1，先在 Mac 上运行 `python3 tools/uart_log.py --log run.log`，再复位；看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
 3. **B2：Mac 直接 UART 启动**：BMODE 切到 UART 从机启动，按复位后运行 `python tools/uart_boot.py <app>.ldr`。
 
