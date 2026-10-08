@@ -49,11 +49,11 @@
    - 附加 Core1、Core2 的 `.dxe`；
    - Initialization 文件使用上面的 Post_Init。
    - 建议为 B1/B2 各建一个构建配置，避免来回改。
-3. **Mac 端脚本 `tools/uart_boot.py`**（pyserial）：
-   - 自动波特率握手：发送自动波特率检测字节，读取 Boot ROM 回应，并打印出来便于排查；
-   - 在 CTS 流控下发送 `.ldr`；
-   - 发送完毕后切换为读取串口，保存日志；按关键字（如 `All done` / `Error`）给出通过或失败的退出码。
-   - 握手字节和流控要求以硬件参考手册（HRM）Boot ROM 章节为准，实现前先核对。
+3. **Mac 端脚本**（pyserial，`pip install -r tools/requirements.txt`）：
+   - `tools/uart_log.py`：读取串口、保存日志，按 `All done` / `Error` 给出通过或失败的退出码（B1 用）。
+   - [ ] `tools/uart_boot.py`（B2）：自动波特率握手（发送检测字节，打印 Boot ROM 回应便于排查），
+     在 CTS 流控下发送 `.ldr`，发完交给 `uart_log.py` 的读取逻辑。
+     握手字节和流控要求以硬件参考手册（HRM）Boot ROM 章节为准，实现前先核对。
 
 ## 验证步骤（按风险从低到高）
 
@@ -61,7 +61,7 @@
    在 Mac 上执行 `screen /dev/cu.usbserial-XXX 57600` 确认能收发。
 2. **B1：程序脱离调试器能跑**：Windows 上生成 ldr，用 CLDP 写入 Flash
    （`cldp -proc ADSP-SC589 -core 1 -emu ICE-2000 -driver sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file <app>.ldr`），
-   BMODE=1，复位；在 Mac 上看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
+   BMODE=1，先在 Mac 上运行 `python3 tools/uart_log.py --log run.log`，再复位；看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
 3. **B2：Mac 直接 UART 启动**：BMODE 切到 UART 从机启动，按复位后运行 `python tools/uart_boot.py <app>.ldr`。
 
 ## 待确认事项 / 风险
