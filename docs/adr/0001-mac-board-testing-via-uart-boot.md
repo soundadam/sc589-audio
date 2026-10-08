@@ -44,7 +44,7 @@
 
 1. **串口输出**：Core1 的 `main` 在软开关配置之后调用 `UartConsoleInit()`，把 stdio 重定向到 UART0
    （`apps/audio_loopback/uart_console.h`）。没有调试器时 JTAG 控制台看不到 `printf`。
-2. **生成 ldr**：`tools/make_ldr.ps1 -Board SC589`（Windows，先编译三个核的 Debug）用 elfloader 把
+2. **生成 ldr**：`tools/make_ldr.ps1`（Windows，先编译三个核的 Debug）用 elfloader 把
    Core0/1/2 和上述初始化代码打包成 SPI master（B1）与 UART slave（B2）两份 binary ldr，不改工程配置。
    三个核也可以用 CCES headless builder 在命令行编译，用法写在脚本头部。
 3. **Mac 端脚本**（pyserial，`pip install -r tools/requirements.txt`）：
