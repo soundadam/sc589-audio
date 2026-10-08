@@ -114,6 +114,16 @@
 			<locationURI>PARENT-3-PROJECT_LOC/tone_check.h</locationURI>
 		</link>
 		<link>
+			<name>src/uart_console.c</name>
+			<type>1</type>
+			<locationURI>PARENT-3-PROJECT_LOC/uart_console.c</locationURI>
+		</link>
+		<link>
+			<name>src/uart_console.h</name>
+			<type>1</type>
+			<locationURI>PARENT-3-PROJECT_LOC/uart_console.h</locationURI>
+		</link>
+		<link>
 			<name>system/SC5xx_EZ-Kit/drivers/adc/adau1979/adi_adau1979.c</name>
 			<type>1</type>
 			<locationURI>COM_ANALOG_CROSSCORE_ADDINS_SC58X_EZ_KIT_2_0_2_LOC/src/drivers/adc/adau1979/adi_adau1979.c</locationURI>
@@ -142,6 +152,26 @@
 			<name>system/SC5xx_EZ-Kit/drivers/dac/adau1962a/adi_adau1962a_regs.h</name>
 			<type>1</type>
 			<locationURI>COM_ANALOG_CROSSCORE_ADDINS_SC58X_EZ_KIT_2_0_2_LOC/src/drivers/dac/adau1962a/adi_adau1962a_regs.h</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio.c</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio_jtag.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_jtag.c</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio_null.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_null.c</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio_uart.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_uart.c</locationURI>
 		</link>
 	</linkedResources>
 	<variableList>
