@@ -48,7 +48,8 @@
    Core0/1/2 和上述初始化代码打包成 SPI master（B1）与 UART slave（B2）两份 binary ldr，不改工程配置。
    三个核也可以用 CCES headless builder 在命令行编译，用法写在脚本头部。
 3. **Mac 端脚本**（pyserial，`pip install -r tools/requirements.txt`）：
-   - `tools/uart_log.py`：读取串口、保存日志，按 `All done` / `Error` 给出通过或失败的退出码（B1 用）。
+   - `tools/uart_log.py`：读取串口、保存日志，按回环开始的那一行与失败行给出通过或失败的退出码（B1 用），
+     判定规则写在脚本头部。回环主循环不退出，所以不等程序结束。
    - [x] `tools/uart_boot.py`（B2）：自动波特率握手，在 CTS 流控下发送 `.ldr`，初始化代码改了 SCLK0
      之后换用对应的波特率，发完切回控制台波特率交给 `uart_log.py` 的读取逻辑。协议细节写在脚本头部。
 
@@ -60,14 +61,12 @@
    （`cldp -proc ADSP-SC589 -core 1 -emu 1000 -driver Device_Programmer/sc589/sharc/sc589_w25q128fv_dpia_Core1/sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file adc_dac_playback_SC589_spimaster.ldr`），
    BMODE=1，先在 Mac 上运行 `python3 tools/uart_log.py --log run.log`，再复位；看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
 3. **B2：Mac 直接 UART 启动**：BMODE 切到 UART0 host 启动（SC589 为 7，见数据手册 Table 9 Boot Modes），
-   运行 `python3 tools/uart_boot.py <app>.ldr --wait 60`，在它等待时按复位。发送约 12 秒，之后串口打印 `Audio loopback running`。
+   运行 `python3 tools/uart_boot.py <app>.ldr --wait 60`，在它等待时按复位。发送约 12 秒，之后串口打印
+   `Audio loopback running`，脚本以退出码 0 结束；输入的音频在输出端可以听到。
 
 ## 待确认事项 / 风险
 
 - SC573 的 UART 启动 BMODE 取值需查 SC57x 数据手册。
-- [ ] 判定条件：回环主循环不退出，程序不会打印 `All done`，`uart_boot.py` 读到 `Audio loopback running` 后以超时（退出码 2）结束。
-  需要决定是以这一行为通过，还是恢复按回调次数退出并做相关性检查。
-- [ ] 试听确认音频回环在 UART 启动下工作。
 - 在没有调试器时，重定向之前调用的 `printf` 行为不确定，所以重定向要放在最前面。
 - 每次运行需要手动按复位键（除非后续引出复位控制）。
 
