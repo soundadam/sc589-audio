@@ -50,6 +50,7 @@
 								<option id="compiler.option.coreid.1356871617" name="Specify the core Id (-DCORE[A|B|0-2])" superClass="compiler.option.coreid" value="1" valueType="string"/>
 								<option id="compiler.option.additionaldirectories.1801803051" name="Additional include directories (-I):" superClass="compiler.option.additionaldirectories" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/system}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/../../..&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${COM_ANALOG_CROSSCORE_ADDINS_SC58X_EZ_KIT_2_0_2_LOC}/include&quot;"/>
 								</option>
 								<option id="compiler.option.compilerswitch.522124774" name="Compiler Switch" superClass="compiler.option.compilerswitch" value="false" valueType="boolean"/>
@@ -154,6 +155,7 @@
 								<option id="compiler.option.coreid.1683663735" name="Specify the core Id (-DCORE[A|B|0-2])" superClass="compiler.option.coreid" value="1" valueType="string"/>
 								<option id="compiler.option.additionaldirectories.298313489" name="Additional include directories (-I):" superClass="compiler.option.additionaldirectories" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/system}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/../../..&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${COM_ANALOG_CROSSCORE_ADDINS_SC58X_EZ_KIT_2_0_2_LOC}/include&quot;"/>
 								</option>
 								<option id="compiler.option.compilerswitch.1303996116" name="Compiler Switch" superClass="compiler.option.compilerswitch" value="false" valueType="boolean"/>

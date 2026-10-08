@@ -8,7 +8,7 @@
 #include <services/stdio/adi_stdio.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "uart_console.h"
+#include "platform/uart_console.h"
 
 /* EZ-Board CLKIN */
 #define CLKIN_HZ                    (25000000u)

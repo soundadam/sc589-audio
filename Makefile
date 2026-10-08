@@ -4,7 +4,7 @@
 .PHONY: check
 
 check:
-	$(MAKE) -C apps/audio_loopback/host_test test
+	$(MAKE) -C apps/audio_loopback/dsp/test test
 	python3 -m unittest discover tools
 
 # Build on the Windows host (tools/remote_build.sh), then boot the board over
