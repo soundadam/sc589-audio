@@ -5,7 +5,7 @@
 板卡通过 P8 接在 Mac 上（FT232R，`/dev/cu.usbserial-*`），UART 启动时 BMODE 为 7；
 需要复位时请用户来按。
 
-CCES 2.9.3 的构建在 `noah.tail`（Windows）上进行，用 `tools/remote_build.sh`（见脚本头部）。
+CCES 2.9.3 的构建在 `noah.tail`（Windows）上进行，用 `host/build/remote_build.sh`（见脚本头部）。
 它把当前工作树同步到 noah 的 `workspaces\adi-cces-examples`，构建完成后把 `.ldr` 取回本地。
 
 - noah 上那份 clone 是 Mac 工作树的镜像，每次构建都会被覆盖：**不要在 noah 上改代码**，

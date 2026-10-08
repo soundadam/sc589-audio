@@ -2,7 +2,7 @@
 
 - 状态：已采用（B2 在 SC589 上验证通过）
 - 日期：2026-09-24
-- 适用：`apps/audio_loopback`，ADSP-SC589 EZ-Kit
+- 适用：`firmware/audio_loopback`，ADSP-SC589 EZ-Kit
 
 ## 背景
 
@@ -37,31 +37,31 @@
   `SHARC\ldr\ezkitSC589_initcode_core0_v10`。
 - printf 重定向到 UART 的参考实现：`vendor/adi/examples/services/stdio/stdio_char_echo/char_echo.c`
   （`adi_stdio_RegisterUART` / `adi_stdio_OpenDevice` / `adi_stdio_RedirectStream`）。
-- `apps/audio_loopback/SC589/SoftConfig_SC589.c` 中 `~UART0_EN`、`~UART0_FLOW_EN` 已设为 0（启用 UART0 和流控）。
+- `firmware/audio_loopback/cces/SC589/SoftConfig_SC589.c` 中 `~UART0_EN`、`~UART0_FLOW_EN` 已设为 0（启用 UART0 和流控）。
 - Core0（ARM）通过 `adi_core_enable` 启动两个 SHARC 核，多核可打包成一个 ldr。
 
 ### 需要的改动
 
 1. **串口输出**：Core1 的 `main` 在软开关配置之后调用 `UartConsoleInit()`，把 stdio 重定向到 UART0
-   （`apps/audio_loopback/uart_console.h`）。没有调试器时 JTAG 控制台看不到 `printf`。
-2. **生成 ldr**：`tools/make_ldr.ps1`（Windows，先编译三个核的 Debug）用 elfloader 把
+   （`firmware/audio_loopback/platform/uart_console.h`）。没有调试器时 JTAG 控制台看不到 `printf`。
+2. **生成 ldr**：`host/build/make_ldr.ps1`（Windows，先编译三个核的 Debug）用 elfloader 把
    Core0/1/2 和上述初始化代码打包成 SPI master（B1）与 UART slave（B2）两份 binary ldr，不改工程配置。
    三个核也可以用 CCES headless builder 在命令行编译，用法写在脚本头部。
-3. **Mac 端脚本**（pyserial，`pip install -r tools/requirements.txt`）：
-   - `tools/uart_log.py`：读取串口、保存日志，按回环开始的那一行与失败行给出通过或失败的退出码（B1 用），
+3. **Mac 端脚本**（pyserial，`pip install -r host/board/requirements.txt`）：
+   - `host/board/uart_log.py`：读取串口、保存日志，按回环开始的那一行与失败行给出通过或失败的退出码（B1 用），
      判定规则写在脚本头部。回环主循环不退出，所以不等程序结束。
-   - [x] `tools/uart_boot.py`（B2）：自动波特率握手，在 CTS 流控下发送 `.ldr`，初始化代码改了 SCLK0
+   - [x] `host/board/uart_boot.py`（B2）：自动波特率握手，在 CTS 流控下发送 `.ldr`，初始化代码改了 SCLK0
      之后换用对应的波特率，发完切回控制台波特率交给 `uart_log.py` 的读取逻辑。协议细节写在脚本头部。
 
 ## 验证步骤（按风险从低到高）
 
 1. **串口通路**：P8 接到 Mac，确认出现 `/dev/cu.usbserial-*`。板载转串口是 FTDI FT232R，macOS 自带驱动即可识别。在 Windows 上用 ICE 运行 stdio_char_echo，
    在 Mac 上执行 `screen /dev/cu.usbserial-XXX 57600` 确认能收发。
-2. **B1：程序脱离调试器能跑**：Windows 上用 `tools/make_ldr.ps1` 生成 ldr，用 CLDP 写入 Flash
+2. **B1：程序脱离调试器能跑**：Windows 上用 `host/build/make_ldr.ps1` 生成 ldr，用 CLDP 写入 Flash
    （`cldp -proc ADSP-SC589 -core 1 -emu 1000 -driver vendor/adi/examples/Device_Programmer/sc589/sharc/sc589_w25q128fv_dpia_Core1/sc589_w25q128fv_dpia_Core1.dxe -cmd prog -erase affected -format bin -file adc_dac_playback_SC589_spimaster.ldr`），
-   BMODE=1，先在 Mac 上运行 `python3 tools/uart_log.py --log run.log`，再复位；看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
+   BMODE=1，先在 Mac 上运行 `python3 host/board/uart_log.py --log run.log`，再复位；看串口输出并试听音频。验证初始化代码、时钟、多核启动和串口输出。
 3. **B2：Mac 直接 UART 启动**：BMODE 切到 UART0 host 启动（SC589 为 7，见数据手册 Table 9 Boot Modes），
-   运行 `python3 tools/uart_boot.py <app>.ldr --wait 60`，在它等待时按复位。发送约 12 秒，之后串口打印
+   运行 `python3 host/board/uart_boot.py <app>.ldr --wait 60`，在它等待时按复位。发送约 12 秒，之后串口打印
    `Audio loopback running`，脚本以退出码 0 结束；输入的音频在输出端可以听到。
 
 ## 待确认事项 / 风险

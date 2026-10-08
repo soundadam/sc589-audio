@@ -48,5 +48,5 @@ Desktop.ini
 .vscode/
 *.code-workspace
 
-# Loader streams copied back by tools/remote_build.sh
+# Loader streams copied back by host/build/remote_build.sh
 /build/
