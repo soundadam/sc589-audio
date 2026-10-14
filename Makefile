@@ -9,10 +9,11 @@ check:
 
 # Build on the Windows host (host/build/remote_build.sh), then boot the board over
 # UART and exit on its console verdict (host/board/uart_boot.py). Press reset when
-# uart_boot.py starts waiting.
+# uart_boot.py starts waiting. The console lines are kept in build/board.log.
 .PHONY: board
 
 board:
 	host/build/remote_build.sh
 	uv run --no-project --with-requirements host/board/requirements.txt \
-		python host/board/uart_boot.py build/adc_dac_playback_SC589_uartslave.ldr --wait 60
+		python host/board/uart_boot.py build/adc_dac_playback_SC589_uartslave.ldr --wait 60 \
+		--log build/board.log
