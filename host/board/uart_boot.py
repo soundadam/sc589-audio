@@ -30,6 +30,7 @@ and 5 when the processor stops accepting data.
 import argparse
 import struct
 import sys
+import threading
 import time
 
 import uart_log
@@ -58,6 +59,10 @@ INIT_SCLK0_HZ = 112500000
 # setup before data arrives at the new rate.
 SETTLE_S = 0.5
 
+# A block takes ~40 ms at 260417 baud; a processor that holds RTS longer has
+# stopped taking the stream.
+DRAIN_TIMEOUT_S = 10.0
+
 
 class BootError(Exception):
     pass
@@ -72,6 +77,21 @@ def handshake(ser):
     if len(ack) != 4 or ack[0] != ACK_FIRST or ack[3] != ACK_LAST:
         raise BootError("no Boot ROM acknowledge (got %r); is BMODE set to UART and the board just reset?" % ack)
     return ack[1] | (ack[2] << 8)
+
+
+def drain(ser, timeout=DRAIN_TIMEOUT_S):
+    """Wait until the OS has sent everything written, or raise BootError.
+
+    Serial.flush() waits in tcdrain() without a timeout and write_timeout does
+    not cover it, so it runs in a thread; discarding the queued output lets
+    it, and the later close(), return.
+    """
+    flusher = threading.Thread(target=ser.flush, daemon=True)
+    flusher.start()
+    flusher.join(timeout)
+    if flusher.is_alive():
+        ser.reset_output_buffer()
+        raise BootError("processor stopped accepting data; flush did not finish in %.0f s" % timeout)
 
 
 def init_block_ends(stream):
@@ -121,7 +141,7 @@ def send(ser, segments, out=sys.stderr):
     sent = 0
     for data, baud in segments:
         if ser.baudrate != baud:
-            ser.flush()
+            drain(ser)
             time.sleep(SETTLE_S)
             ser.baudrate = baud
             out.write("\nswitched to %d baud at byte %d\n" % (baud, sent))
@@ -132,7 +152,7 @@ def send(ser, segments, out=sys.stderr):
             # the host switches back to the console rate right after the last
             # block, inside the application's settle time; flush() returns
             # late after a large write
-            ser.flush()
+            drain(ser)
             sent += len(chunk)
             out.write("\rsent %d / %d bytes" % (sent, total))
             out.flush()

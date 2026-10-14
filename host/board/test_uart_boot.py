@@ -3,6 +3,7 @@
     python3 -m unittest discover tools
 """
 
+import threading
 import unittest
 
 import uart_boot
@@ -72,6 +73,32 @@ class PlanTest(unittest.TestCase):
     def test_rejects_non_loader_bytes(self):
         with self.assertRaises(uart_boot.BootError):
             uart_boot.init_block_ends(b"\x00" * 32)
+
+
+class DrainSerial:
+    """flush() blocks like tcdrain() under held RTS until the output is discarded."""
+
+    def __init__(self, stuck):
+        self.sent = threading.Event()
+        if not stuck:
+            self.sent.set()
+
+    def flush(self):
+        self.sent.wait()
+
+    def reset_output_buffer(self):
+        self.sent.set()
+
+
+class DrainTest(unittest.TestCase):
+    def test_returns_once_flush_does(self):
+        uart_boot.drain(DrainSerial(stuck=False), timeout=1.0)
+
+    def test_held_rts_raises_and_releases_flush(self):
+        ser = DrainSerial(stuck=True)
+        with self.assertRaises(uart_boot.BootError):
+            uart_boot.drain(ser, timeout=0.05)
+        self.assertTrue(ser.sent.is_set())
 
 
 class PadTest(unittest.TestCase):
