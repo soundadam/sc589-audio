@@ -110,16 +110,6 @@
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.h</locationURI>
 		</link>
 		<link>
-			<name>src/tone_check.c</name>
-			<type>1</type>
-			<locationURI>PARENT-4-PROJECT_LOC/tone_check.c</locationURI>
-		</link>
-		<link>
-			<name>src/tone_check.h</name>
-			<type>1</type>
-			<locationURI>PARENT-4-PROJECT_LOC/tone_check.h</locationURI>
-		</link>
-		<link>
 			<name>src/uart_console.c</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/uart_console.c</locationURI>

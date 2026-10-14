@@ -26,8 +26,10 @@ BAUD = 57600
 PASS_LINES = ("Audio loopback running",)
 # The final verdict line, plus the init failures the setup code prints
 FAIL_MARKERS = ("Error", "failed", "Failed")
-# The pass line comes just before audio DMA starts, and a buffer the loop
-# cannot keep up with ends it with "Error" within milliseconds
+# The pass line comes just before audio DMA starts. The firmware ends the
+# loop with "Error" within milliseconds of a buffer it could not keep up
+# with, and within START_TIMEOUT_CYCLES (adc_dac_playback.h) when no ADC or
+# DAC callback arrives, so the hold must outlast that timeout.
 PASS_HOLD_S = 2.0
 
 EXIT_PASS, EXIT_FAIL, EXIT_TIMEOUT, EXIT_NO_PORT = 0, 1, 2, 3

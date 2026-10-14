@@ -4,6 +4,7 @@
  */
 
 #include <sys/platform.h>
+#include <builtins.h>
 #include <services/pwr/adi_pwr.h>
 #include <services/stdio/adi_stdio.h>
 #include <stddef.h>
@@ -15,6 +16,15 @@
 
 /* UART0 is the port wired to the on-board USB-to-serial bridge */
 #define UART_CONSOLE_DEV_ID         (0u)
+
+/*
+ * Core cycles to hold the first console line back: 0.2 s at 450 MHz. After a
+ * UART boot the host still has the end of the stream in its USB-to-serial
+ * FIFO when the application starts, and only then switches back to
+ * UART_CONSOLE_BAUD; anything printed before that is lost
+ * (host/board/uart_boot.py).
+ */
+#define UART_CONSOLE_SETTLE_CYCLES  (90000000ull)
 
 /*
  * UART0 pins, taken from the Pin Multiplexing add-in output of
@@ -34,6 +44,15 @@
 
 static ADI_STDIO_DEVICE_HANDLE hStdioJtag = NULL;
 static ADI_STDIO_DEVICE_HANDLE hStdioUart = NULL;
+
+static void WaitForHost(void)
+{
+	unsigned long long Start = emuclk();
+
+	while((emuclk() - Start) < UART_CONSOLE_SETTLE_CYCLES)
+	{
+	}
+}
 
 static void Uart0PinMux(void)
 {
@@ -74,6 +93,8 @@ uint32_t UartConsoleInit(void)
 	{
 		return 1u;
 	}
+
+	WaitForHost();
 
 	return 0u;
 }
