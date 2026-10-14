@@ -18,8 +18,10 @@ The Initcode in the stream reprograms the CGU, so SCLK0 changes while the
 UART keeps its divisor and the processor's bit rate moves with it. The
 stream is therefore sent in two rates: up to the end of each Init block at
 the handshake rate, the rest at --init-sclk0 / (16 * divisor). The
-application reopens UART0 at uart_log.BAUD and prints within milliseconds of
-the last block, so the host switches back as soon as that block is out.
+application reopens UART0 at uart_log.BAUD and holds its first line back
+(UART_CONSOLE_SETTLE_CYCLES in firmware/audio_loopback/platform/uart_console.c)
+so the host can switch back after the last block; output the application
+prints before the switch is lost.
 
 Exit codes are those of uart_log.py, plus 4 when the Boot ROM does not answer
 and 5 when the processor stops accepting data.
@@ -127,9 +129,9 @@ def send(ser, segments, out=sys.stderr):
             chunk = data[offset:offset + BLOCK]
             if ser.write(chunk) != len(chunk):
                 raise BootError("processor stopped accepting data near byte %d" % sent)
-            # the application prints within milliseconds of the last block, so
-            # the host must know when that block is on the wire to switch back
-            # in time; flush() returns late after a large write
+            # the host switches back to the console rate right after the last
+            # block, inside the application's settle time; flush() returns
+            # late after a large write
             ser.flush()
             sent += len(chunk)
             out.write("\rsent %d / %d bytes" % (sent, total))
