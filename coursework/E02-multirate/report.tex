@@ -168,6 +168,8 @@ IIR & \IirFrames & \IirCycles \\
 \end{table}
 
 整个 \texttt{AudioProcess} 每帧 \AudioPerFrame{} 个周期，占预算的 \AudioLoad\%。
+时间几乎全在两级 FIR 上：折合每次乘加，降采样约 \DecCyclesPerMac{} 个周期、升采样约 \IntCyclesPerMac{} 个周期，
+是 Debug 配置下未经优化的循环；IIR 只算 \IirFrames{} 个低速率样本，可以忽略。
 
 \begin{figure}[H]
 \centering

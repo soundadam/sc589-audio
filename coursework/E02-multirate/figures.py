@@ -175,7 +175,7 @@ def main():
     if run is not None and "chain" in run.impulse:
         mac = cdsp.impulse(len(run.impulse["chain"]))[:, 0]
         plot.impulse([plot.Series("声道 0（降采样、IIR、升采样）", impulse=mac, measured=run.impulse["chain"])],
-                      OUT / "board_impulse.pdf")
+                      OUT / "board_impulse.pdf", reference="Mac 上的 C 代码")
         budget = run.cclk_hz / fs
         whole = run.cycles["audio_process"]
         s += _macro("BoardRun", "")
@@ -190,6 +190,11 @@ def main():
         s += _macro("AudioCycles", "%d" % whole.cycles)
         s += _macro("AudioPerFrame", "%.0f" % whole.per_sample)
         s += _macro("AudioLoad", "%.0f" % (100.0 * whole.per_sample / budget))
+        # the phase-0 block the report times carries the most low-rate samples
+        dec_macs = (-(-cdsp.BLOCK_FRAMES // design.FACTOR)) * len(h)
+        int_macs = cdsp.BLOCK_FRAMES * (len(h) // design.FACTOR)
+        s += _macro("DecCyclesPerMac", "%.0f" % (run.cycles["decimator"].cycles / dec_macs))
+        s += _macro("IntCyclesPerMac", "%.0f" % (run.cycles["interpolator"].cycles / int_macs))
 
     (OUT / "results.tex").write_text(s)
     print("wrote %s%s" % (OUT.relative_to(REPO), "" if run else " (no board log)"))

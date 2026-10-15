@@ -52,12 +52,12 @@ def _khz(ax, fmax_hz):
     ax.set_xlabel("频率 / kHz")
 
 
-def impulse(series, path, *, title=None):
-    """One panel per series: the impulse response as stems, the measured one as crosses."""
+def impulse(series, path, *, title=None, reference="设计"):
+    """One panel per series: the impulse response as stems, labelled `reference`, the measured one as crosses."""
     fig, axes = plt.subplots(len(series), 1, figsize=(WIDTH_IN, 2.1 * len(series)), squeeze=False)
     for ax, s in zip(axes[:, 0], series):
         n = np.arange(len(s.impulse))
-        ax.stem(n, s.impulse, basefmt=" ", markerfmt=".", label="设计", **s.style)
+        ax.stem(n, s.impulse, basefmt=" ", markerfmt=".", label=reference, **s.style)
         if s.measured is not None:
             ax.plot(np.arange(len(s.measured)), s.measured, "x", color="k", ms=4, mew=0.7, label="板上运算")
             ax.legend()
