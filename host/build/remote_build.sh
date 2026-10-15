@@ -12,6 +12,12 @@
 # deleted here are deleted there too. The host clone is a mirror: edits made
 # there are overwritten on the next run. Then host/build/remote_build.ps1 builds
 # the three cores and runs make_ldr.ps1.
+#
+# The firmware files under ADI's licence are not in this repository. They live
+# in the private sc589-adi repository at the same paths, listed in its
+# firmware-files.txt, and are added to the snapshot from ADI_DIR (default: a
+# sc589-adi checkout next to this one). The snapshot ref is local and never
+# pushed.
 
 set -euo pipefail
 
@@ -30,6 +36,16 @@ index=$(mktemp)
 trap 'rm -f "$index" "$index.bundle"' EXIT
 GIT_INDEX_FILE=$index git read-tree HEAD
 GIT_INDEX_FILE=$index git add -A
+adi=${ADI_DIR:-$repo/../sc589-adi}
+if [ ! -f "$adi/firmware-files.txt" ]; then
+    echo "no $adi/firmware-files.txt: clone sc589-adi there or set ADI_DIR" >&2
+    exit 1
+fi
+while IFS= read -r path; do
+    # --no-filters keeps the bytes as they are, CRLF included
+    blob=$(git hash-object -w --no-filters "$adi/$path")
+    GIT_INDEX_FILE=$index git update-index --add --cacheinfo "100644,$blob,$path"
+done < "$adi/firmware-files.txt"
 tree=$(GIT_INDEX_FILE=$index git write-tree)
 # A fixed date makes an unchanged tree give the same commit, so nothing is sent
 snapshot=$(GIT_AUTHOR_DATE='2000-01-01T00:00:00Z' GIT_COMMITTER_DATE='2000-01-01T00:00:00Z' \

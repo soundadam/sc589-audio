@@ -94,11 +94,3 @@ def write(stem, tables, *, brief, details, generator, includes=()):
     stem.with_suffix(".h").write_text("\n".join(head) + "\n")
     stem.with_suffix(".c").write_text("\n".join(src) + "\n")
 
-
-def read_define(header, name):
-    """Integer value of `#define name (123u)` in a C header, so a figure uses the firmware's number."""
-    for line in Path(header).read_text().splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and parts[0] == "#define" and parts[1] == name:
-            return int(parts[2].strip("()uUlL"))
-    raise KeyError("%s not defined in %s" % (name, header))

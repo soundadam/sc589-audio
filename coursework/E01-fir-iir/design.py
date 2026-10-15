@@ -20,10 +20,9 @@ FIR_TAPS = 32           # order 31
 IIR_ORDER = 8           # four second-order sections
 CUTOFF_HZ = 2000.0
 FIR_WINDOW = "hamming"
-
-
-def sample_rate():
-    return ccode.read_define(FIRMWARE / "adc_dac_playback.h", "SAMPLE_RATE")
+# The codecs' rate; written into the header as LOWPASS_SAMPLE_RATE, which
+# filter_report.c checks against the firmware's SAMPLE_RATE at compile time
+SAMPLE_RATE = 48000
 
 
 def fir(fs):
@@ -49,7 +48,7 @@ def iir(fs):
 
 
 def main():
-    fs = sample_rate()
+    fs = SAMPLE_RATE
     h = fir(fs)
     sos = iir(fs)
     tables = [
@@ -59,7 +58,7 @@ def main():
             values=h,
             comment="FIR taps h[0] .. h[N-1]; symmetric, so linear phase with a\n"
                     "group delay of (N - 1) / 2 samples.",
-            defines=[("LOWPASS_FIR_TAPS", FIR_TAPS)],
+            defines=[("LOWPASS_SAMPLE_RATE", fs), ("LOWPASS_FIR_TAPS", FIR_TAPS)],
         ),
         ccode.Table(
             name="LowpassIirSos",

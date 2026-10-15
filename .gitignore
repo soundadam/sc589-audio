@@ -23,10 +23,8 @@ release/
 *.map
 *.xml.map
 
-# Built executables. Device Programmer ships a few DXEs next to the project
-# files (not under Debug/); keep those.
+# Built executables
 *.dxe
-!vendor/adi/examples/Device_Programmer/**/*.dxe
 
 # ARM GCC leftovers that sometimes appear outside Debug/Release
 *.o

@@ -15,6 +15,10 @@
 #include "dsp/lowpass_coeffs.h"
 #include "platform/filter_report.h"
 
+#if LOWPASS_SAMPLE_RATE != SAMPLE_RATE
+#error "lowpass_coeffs was designed for another sample rate; rerun coursework/E01-fir-iir/design.py"
+#endif
+
 /* Twice the filter length, so the zeros after the last tap show */
 #define REPORT_FIR_LEN      (2u * LOWPASS_FIR_TAPS)
 /*

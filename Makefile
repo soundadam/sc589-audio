@@ -6,6 +6,9 @@
 check:
 	$(MAKE) -C firmware/audio_loopback/dsp/test test
 	python3 -m unittest discover -s host/board
+	@# ADI-licensed files belong in sc589-adi (.claude/rules/vendor.md)
+	@if git grep -l -E 'Analog Devices,? Inc\.?,? All Rights Reserved' -- ':!.claude'; then \
+		echo 'ADI-licensed files above must not be committed here' >&2; exit 1; fi
 
 # Build on the Windows host (host/build/remote_build.sh), then boot the board over
 # UART and exit on its console verdict (host/board/uart_boot.py). Press reset when

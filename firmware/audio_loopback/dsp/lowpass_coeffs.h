@@ -19,6 +19,7 @@
  * FIR taps h[0] .. h[N-1]; symmetric, so linear phase with a
  * group delay of (N - 1) / 2 samples.
  */
+#define LOWPASS_SAMPLE_RATE (48000u)
 #define LOWPASS_FIR_TAPS (32u)
 extern const float LowpassFirCoeffs[LOWPASS_FIR_TAPS];
 

@@ -28,7 +28,7 @@
 
 /*
  * UART0 pins, taken from the Pin Multiplexing add-in output of
- * vendor/adi/examples/services/stdio/stdio_char_echo/<board>/sharc/stdio_char_echo_Core1.
+ * ADI's stdio_char_echo example (<board>/sharc/stdio_char_echo_Core1).
  * Applied read-modify-write
  * so pins configured elsewhere keep their function.
  */
