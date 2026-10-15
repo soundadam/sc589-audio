@@ -63,3 +63,8 @@ make board
 在 Windows 主机上用当前工作树（含未提交的改动）构建，取回 `.ldr` 到 `build/`，通过 UART 启动板卡，
 按串口输出判定通过或失败，控制台输出存进 `build/board.log`。看到 `uart_boot.py` 开始等待时按复位。只构建不上板用 `host/build/remote_build.sh`。
 其余启动方式见 [ADR 0001](docs/adr/0001-mac-board-testing-via-uart-boot.md) 的「验证步骤」。
+
+## 许可
+
+[Apache License 2.0](LICENSE)。可以自由使用、修改和商用；再分发时请保留 `LICENSE` 和 [`NOTICE`](NOTICE)（里面写着出处），
+改过的文件注明改动。上面列出的 ADI 文件不在仓库里，也不在这个许可之内。
