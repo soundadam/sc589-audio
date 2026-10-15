@@ -1,6 +1,6 @@
 """E01 figures and numbers for the report, from the design and the board log.
 
-    make board                                   # writes build/board.log
+    make board EXPERIMENT=E01                    # writes build/E01/board.log
     uv run coursework/E01-fir-iir/figures.py     # writes build/E01/
 
 The impulse figure overlays what the SHARC computed from the same
@@ -19,7 +19,7 @@ from dsplab import boardlog, plot, response
 
 REPO = design.REPO
 OUT = REPO / "build" / "E01"
-BOARD_LOG = REPO / "build" / "board.log"
+BOARD_LOG = OUT / "board.log"
 
 # Phase and group delay are shown over the pass band and transition only:
 # the FIR's first zero (about 4.7 kHz) flips its phase by 180 degrees there

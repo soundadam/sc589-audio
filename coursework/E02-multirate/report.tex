@@ -1,0 +1,182 @@
+% E02 report. Built by `make e02`; numbers come from build/E02/results.tex.
+\documentclass[zihao=-4, linespread=1.5, fontset=none]{ctexart}
+\usepackage{labreport}
+
+\graphicspath{{../../build/E02/}}
+\input{../../build/E02/results.tex}
+\input{../../build/E02/author.tex}
+
+\title{实验 E02\quad 采样率的实时转换}
+\author{\ReportAuthor\quad\url{https://github.com/soundadam}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{实验内容}
+
+ADSP-SC589 EZ-Board 的音频回环以 $f_s=\SampleRate$~Hz 运行。在 DSP 内部把输入信号降采样到
+$f_L=\LowRate$~Hz，在低速率上处理，再升采样回 \SampleRate~Hz 输出：
+\begin{itemize}
+  \item 输入：\SampleRate~Hz $\to$ \LowRate~Hz（降采样 $\Factor:1$）；
+  \item 输出：\LowRate~Hz $\to$ \SampleRate~Hz（升采样 $1:\Factor$）；
+  \item 自行设计降采样和升采样用的低通滤波器；
+  \item 用两种处理验证 \LowRate~Hz 信号有效：截止频率 \IirCutoffHz~Hz 的 IIR 低通，以及生成指定频率的单频信号。
+\end{itemize}
+
+完整代码（固件、设计与作图脚本、本报告的源文件）在
+\url{https://github.com/soundadam/sc589-audio}，本实验在其中的
+\path{coursework/E02-multirate} 目录下。
+
+\section{系统框图}
+
+音频按每块 \BlockFrames{} 帧送进 \texttt{AudioProcess}（图~\ref{fig:system}）。偶数声道降采样后经 IIR 低通，
+奇数声道不用输入，由单频发生器在 \LowRate~Hz 上生成信号，两路都再升采样回 \SampleRate~Hz。
+一对相邻声道接同一路输入，一侧听到低通后的输入，另一侧听到单频信号。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=6mm and 7mm, font=\small]
+  \node (in) {输入};
+  \node[block, right=of in] (dec) {降采样\\$\Factor:1$};
+  \node[block, right=16mm of dec, yshift=9mm] (iir) {处理 1：IIR 低通\\偶数声道};
+  \node[block, right=16mm of dec, yshift=-9mm] (tone) {处理 2：单频 \ToneHz~Hz\\奇数声道};
+  \node[block, right=16mm of iir, yshift=-9mm] (int) {升采样\\$1:\Factor$};
+  \node[right=of int] (out) {输出};
+  \draw[sig] (in) -- (dec);
+  \draw[sig] (dec.east) -- ++(5mm,0) |- (iir.west);
+  \draw[sig] (iir.east) -- ++(6mm,0) |- ($(int.west)+(0,1mm)$);
+  \draw[sig] (tone.east) -- ++(6mm,0) |- ($(int.west)+(0,-1mm)$);
+  \draw[sig] (int) -- (out);
+  \node[draw, dashed, rounded corners, inner sep=2mm, fit=(iir) (tone),
+        label={[font=\small]above:@ \LowRate~Hz}] (low) {};
+  \node[draw, rounded corners, inner sep=3mm, fit=(dec) (low) (int),
+        label={[font=\small]below:\texttt{AudioProcess}（SHARC 核 1）@ \SampleRate~Hz}] {};
+\end{tikzpicture}
+\caption{处理链}
+\label{fig:system}
+\end{figure}
+
+\section{滤波器设计}
+
+系数由该目录下的 \path{design.py} 用 SciPy 计算，写成 C 数组 \path{multirate_coeffs.c}。
+
+\subsection{降采样与升采样共用的原型低通}
+
+降采样前要滤掉 $f_L/2=\StopHz$~Hz 以上的成分，否则它们会混叠进 $0$--\StopHz~Hz；
+升采样插零后频谱在 $kf_L\pm f$ 处出现镜像，同样要滤掉 \StopHz~Hz 以上的部分。两处的要求相同，
+所以共用一个工作在 \SampleRate~Hz 的原型低通 $h[n]$：通带到 \PassHz~Hz，从 \StopHz~Hz 起衰减目标 \StopTargetDb~dB。
+用 Kaiser 窗法设计，长度由 Kaiser 公式估计后向上取到 \Factor{} 的倍数，为 $N=\Taps$ 个抽头；
+截止频率取在 \PassHz{} 与 \StopHz~Hz 的中点。实际通带起伏 \PassRippleDb~dB，\StopHz~Hz 以上最大增益 \StopDb~dB
+（图~\ref{fig:prototype}）。原型偶对称，线性相位，群时延 $\frac{N-1}{2}=\ProtoDelay$ 个样本。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{prototype.pdf}
+\caption{原型低通的幅频特性，虚线为 \PassHz~Hz 与 \StopHz~Hz}
+\label{fig:prototype}
+\end{figure}
+
+\subsection{\LowRate~Hz 上的 IIR 低通}
+
+\IirOrder{} 阶 Butterworth，在 $f_L=\LowRate$~Hz 下 \IirCutoffHz~Hz 处为 $-3$~dB，拆成 \IirSections{} 个二阶节，
+沿用 E01 的转置直接 II 型实现（图~\ref{fig:iir}）。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{iir.pdf}
+\caption{IIR 低通的幅频特性（$f_L=\LowRate$~Hz）}
+\label{fig:iir}
+\end{figure}
+
+\subsection{单频信号}
+
+\ToneHz~Hz 在 \LowRate~Hz 下一个周期正好 \ToneLen{} 个样本，幅度 \ToneLevel{} 倍满量程。
+固件循环读一张一个周期长的表，没有相位累加误差。
+
+\section{实现}
+
+\subsection{多相结构}
+
+降采样器每进 \Factor{} 个样本才算一次输出，只算要保留的那一个：
+\[ y[m]=\sum_{k=0}^{N-1}h[k]\,x[\Factor m-k], \]
+每个低速率样本 \DecMuls{} 次乘法，折合每个输入样本 \DecMulsPerIn{} 次。
+
+升采样器在每个低速率样本后插 $\Factor-1$ 个零再用 $\Factor\cdot h[n]$ 滤波，补偿插零带来的 $1/\Factor$ 增益。
+与零相乘的项不算：第 $p$ 个相位（$p=0,\dots,\Factor-1$）的输出只用 $h[p],h[p+\Factor],h[p+2\cdot\Factor],\dots$
+共 \BranchTaps{} 个系数，每个输出样本 \IntMuls{} 次乘法（含增益）。
+
+\subsection{块与相位}
+
+一块 \BlockFrames{} 帧不是 \Factor{} 的整数倍，所以每块对应的低速率样本数在 \LowPerBlockMin{} 和 \LowPerBlockMax{} 之间交替。
+降采样器和升采样器各自记一个从 0 到 $\Factor-1$ 循环的相位，复位后都从 0 开始：降采样器在相位 0 的输入上产出一个样本，
+升采样器在相位 0 的输出上取走一个样本。两者走过同样多的帧，所以每块产出与取走的低速率样本数总是相等，
+状态跨块延续，输出与分块方式无关。主机端测试把同一段信号按 \BlockFrames{} 帧和按 7 帧分块处理，结果逐样本相同。
+
+降采样与升采样两级原型的群时延合计 $N-1$ 个样本，即 \ChainDelayMs~ms，再加上 IIR 的群时延。
+
+\section{验证}
+
+处理链的 C 代码不依赖板卡，在 Mac 上编译后逐块调用 \texttt{AudioProcess}，输入输出都是 24 位定点，
+与板上运行的是同一份代码。
+
+\subsection{IIR 声道：频率响应与混叠}
+
+从 \SweepStepHz~Hz 间隔扫过 $0$--$f_s/2$，把单频信号送入偶数声道，测输出与输入的功率比（图~\ref{fig:chain}）。
+\StopHz~Hz 以下，输出就是 IIR 低通的响应；高于 \StopHz~Hz 的输入在 \LowRate~Hz 上会混叠到 $|f-kf_L|$，
+所以理论增益是原型在输入频率的增益、IIR 在混叠频率的增益与原型在混叠频率的增益之积。
+实测与由系数计算的值在 $-60$~dB 以上最多相差 \SweepMaxErrDb~dB；\StopHz~Hz 以上任何输入的输出都不超过 \AliasWorstDb~dB。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{chain.pdf}
+\caption{偶数声道的增益（输入频率 $\to$ 输出），虚线为 $kf_L/2$}
+\label{fig:chain}
+\end{figure}
+
+\subsection{单频声道：频谱}
+
+奇数声道输出的频谱（图~\ref{fig:tone}）只有 \ToneHz~Hz 一根谱线，电平 \ToneDb~dBFS，与表的幅度 \ToneLevel{} 一致；
+插零产生的镜像在 $kf_L\pm\ToneHz$~Hz，经原型滤波后最高 \ToneImageDb~dBFS。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{tone.pdf}
+\caption{单频声道输出的频谱（Blackman 窗），虚线为 $kf_L$}
+\label{fig:tone}
+\end{figure}
+
+\ifdefined\BoardRun
+\section{板上运行}
+
+板上程序启动时把偶数声道对单位冲激的前 \ChainIrLen{} 个输出打到串口，与 Mac 上同一份代码的结果最大相差 \ChainIrErr
+（图~\ref{fig:board}）。周期数在 CCLK $=\CclkMHz$~MHz 下测得，每个样本的预算为 \CyclesBudget{} 个周期：
+
+\begin{table}[H]
+\centering
+\caption{各级的周期数（Debug 配置）}
+\begin{tabular}{lrr}
+\toprule
+ & 样本数 & 周期 \\
+\midrule
+降采样 & \BlockFrames & \DecCycles \\
+IIR & \IirFrames & \IirCycles \\
+升采样 & \BlockFrames & \IntCycles \\
+\texttt{AudioProcess}（4 声道） & \BlockFrames & \AudioCycles \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+整个 \texttt{AudioProcess} 每帧 \AudioPerFrame{} 个周期，占预算的 \AudioLoad\%。
+时间几乎全在两级 FIR 上：折合每次乘加，降采样约 \DecCyclesPerMac{} 个周期、升采样约 \IntCyclesPerMac{} 个周期，
+是 Debug 配置下未经优化的循环；IIR 只算 \IirFrames{} 个低速率样本，可以忽略。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{board_impulse.pdf}
+\caption{偶数声道的冲激响应：Mac 上的 C 代码与板上运算}
+\label{fig:board}
+\end{figure}
+\fi
+
+\end{document}

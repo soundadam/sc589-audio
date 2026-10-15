@@ -150,6 +150,36 @@
 			<locationURI>PARENT-4-PROJECT_LOC/dsp/lowpass_coeffs.h</locationURI>
 		</link>
 		<link>
+			<name>src/multirate.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/multirate.c</locationURI>
+		</link>
+		<link>
+			<name>src/multirate.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/multirate.h</locationURI>
+		</link>
+		<link>
+			<name>src/multirate_coeffs.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/multirate_coeffs.c</locationURI>
+		</link>
+		<link>
+			<name>src/multirate_coeffs.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/multirate_coeffs.h</locationURI>
+		</link>
+		<link>
+			<name>src/tone.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/tone.c</locationURI>
+		</link>
+		<link>
+			<name>src/tone.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/tone.h</locationURI>
+		</link>
+		<link>
 			<name>src/uart_console.c</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/uart_console.c</locationURI>

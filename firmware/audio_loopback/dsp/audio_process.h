@@ -34,9 +34,10 @@ void AudioProcessInit(void);
  * Produces one output block from one input block.
  *
  * Each channel is converted from sign-extended 24-bit fixed point to float,
- * low-pass filtered (FIR on even channels, IIR on odd ones), then saturated
- * and rounded back. Filter state carries
- * over between calls, so consecutive blocks must belong to one stream.
+ * taken down to the low rate and processed there (IIR low-pass on even
+ * channels, test tone on odd ones), brought back up to the codec rate, then
+ * saturated and rounded back. Filter state carries over between calls, so
+ * consecutive blocks must belong to one stream.
  *
  * Parameters
  *  pIn         interleaved source samples, nFrames * nChannels of them
