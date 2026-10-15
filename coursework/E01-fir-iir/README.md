@@ -23,6 +23,7 @@ make e01
 ```
 
 `make board` 让板卡打印冲激响应和周期数到 `build/board.log`；`make e01` 作图并编译出 `build/E01/report.pdf`。
+署名取 `REPORT_AUTHOR`，默认 `soundadam`；姓名学号写在仓库根目录不入库的 `.env` 里，例如 `REPORT_AUTHOR = 姓名\quad 学号`。
 改了 `design.py` 之后先运行 `uv run coursework/E01-fir-iir/design.py` 重新生成系数，再 `make board`。
 
 ## 要求

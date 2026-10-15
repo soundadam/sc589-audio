@@ -54,3 +54,6 @@ Desktop.ini
 # Python
 __pycache__/
 /.venv/
+
+# Local settings, such as the report byline (Makefile)
+/.env
