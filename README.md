@@ -1,7 +1,20 @@
-# ADSP-SC589 音频开发
+# ADSP-SC589 音频实验
 
-在 ADSP-SC589 EZ-Board 上开发音频处理程序。日常在 Mac 上写代码、跑测试，通过 UART 启动板卡；
-CCES 构建和需要单步调试的时候用 Windows 机器（见 [ADR 0001](docs/adr/0001-mac-board-testing-via-uart-boot.md)）。
+这是我做数字信号处理实验课用的仓库。板卡是 ADI 的 **ADSP-SC589 EZ-Board**（一颗 ARM Cortex-A5 加两颗 SHARC+ 核），
+课上的作业都在它的音频回环上做：音频从 ADC 进来，SHARC 上跑滤波器，再从 DAC 送出去。
+
+麻烦在于开发环境。ADI 的 IDE 和编译器 CrossCore Embedded Studio（CCES）只有 Windows 和 Linux x86 版本，
+macOS 上不能编译；调试器 ICE 的驱动也没有 Mac 版。我手边只有一台 Mac，没有 Windows 笔记本，所以分成两半：
+
+- **编译在 Windows 上做。** 一台装了 CCES 的 Windows 机器只负责编译：Mac 上一个脚本把当前工作树传过去，
+  在那边用命令行编译好，再把生成的 `.ldr` 启动文件拿回来。
+- **运行在 Mac 上做。** 板卡的 USB 转串口接到 Mac，把板子拨到 UART 启动，Mac 按 Boot ROM 的协议
+  把 `.ldr` 通过串口发给板子，程序跑起来以后还是从这个串口读输出。这样不用调试器，代价是不能单步。
+
+为什么这样选、试过哪些别的办法，写在 [ADR 0001](docs/adr/0001-mac-board-testing-via-uart-boot.md)。
+滤波器本身是纯 C，不依赖板卡，在 Mac 上就能编译和测试；画图和写报告用 Python 和 LaTeX，也都在 Mac 上。
+
+课程作业在 [`coursework/`](coursework/)，每次实验一个目录，里面有要求清单和报告源文件。
 
 ## 目录
 
