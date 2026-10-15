@@ -27,7 +27,11 @@ def sample_rate():
 
 
 def fir(fs):
-    """Windowed sinc, unity gain at DC; CUTOFF_HZ is its -6 dB point."""
+    """Windowed sinc, unity gain at DC.
+
+    CUTOFF_HZ is the half-amplitude (-6 dB) point of the ideal response the
+    window truncates; the 32-tap result passes a little more there.
+    """
     return signal.firwin(FIR_TAPS, CUTOFF_HZ, fs=fs, window=FIR_WINDOW)
 
 
@@ -72,9 +76,9 @@ def main():
         FIRMWARE / "dsp" / "lowpass_coeffs",
         tables,
         brief="Low-pass coefficients for the E01 FIR and IIR comparison.",
-        details="Cut-off %.0f Hz at fs = %d Hz. FIR: %d taps, %s window, -6 dB at\n"
-                "the cut-off. IIR: order %d Butterworth, -3 dB at the cut-off, each\n"
-                "section scaled to unity gain at DC."
+        details="Cut-off %.0f Hz at fs = %d Hz. FIR: %d taps, %s-windowed ideal\n"
+                "low-pass that is -6 dB at the cut-off. IIR: order %d Butterworth,\n"
+                "-3 dB at the cut-off, each section scaled to unity gain at DC."
                 % (CUTOFF_HZ, fs, FIR_TAPS, FIR_WINDOW, IIR_ORDER),
         generator="uv run coursework/E01-fir-iir/design.py",
         includes=["dsp/biquad.h"],

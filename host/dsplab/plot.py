@@ -31,10 +31,15 @@ plt.rcParams.update({
 
 @dataclass
 class Series:
-    label: str
+    label: str | None               # None keeps the curve out of the legend
     response: object = None         # dsplab.response.Response
     impulse: np.ndarray = None
+    measured: np.ndarray = None     # impulse response from the board, drawn over `impulse`
     style: dict = field(default_factory=dict)
+
+    @property
+    def legend(self):
+        return "_nolegend_" if self.label is None else self.label
 
 
 def _finish(fig, path):
@@ -48,14 +53,17 @@ def _khz(ax, fmax_hz):
 
 
 def impulse(series, path, *, title=None):
-    """One panel per series: the impulse response as stems."""
-    fig, axes = plt.subplots(len(series), 1, figsize=(WIDTH_IN, 1.9 * len(series)), squeeze=False)
+    """One panel per series: the impulse response as stems, the measured one as crosses."""
+    fig, axes = plt.subplots(len(series), 1, figsize=(WIDTH_IN, 2.1 * len(series)), squeeze=False)
     for ax, s in zip(axes[:, 0], series):
         n = np.arange(len(s.impulse))
-        ax.stem(n, s.impulse, basefmt=" ", markerfmt=".", **s.style)
+        ax.stem(n, s.impulse, basefmt=" ", markerfmt=".", label="设计", **s.style)
+        if s.measured is not None:
+            ax.plot(np.arange(len(s.measured)), s.measured, "x", color="k", ms=4, mew=0.7, label="板上运算")
+            ax.legend()
         ax.set_title(s.label)
         ax.set_ylabel("$h[n]$")
-    axes[-1, 0].set_xlabel("$n$ / 采样点")
+    axes[-1, 0].set_xlabel("采样序号 n")
     if title:
         fig.suptitle(title)
     fig.tight_layout()
@@ -65,7 +73,7 @@ def impulse(series, path, *, title=None):
 def magnitude(series, path, *, fmax_hz, ylim=(-100, 5), marks_hz=()):
     fig, ax = plt.subplots(figsize=(WIDTH_IN, 2.8))
     for s in series:
-        ax.plot(s.response.f / 1000.0, s.response.mag_db, label=s.label, **s.style)
+        ax.plot(s.response.f / 1000.0, s.response.mag_db, label=s.legend, **s.style)
     for f in marks_hz:
         ax.axvline(f / 1000.0, color="0.5", lw=0.8, ls=":")
     ax.axhline(-3, color="0.5", lw=0.6, ls="--")
@@ -80,7 +88,7 @@ def phase(series, path, *, fmax_hz):
     fig, ax = plt.subplots(figsize=(WIDTH_IN, 2.8))
     for s in series:
         keep = s.response.f <= fmax_hz
-        ax.plot(s.response.f[keep] / 1000.0, s.response.phase_deg[keep], label=s.label, **s.style)
+        ax.plot(s.response.f[keep] / 1000.0, s.response.phase_deg[keep], label=s.legend, **s.style)
     ax.set_ylabel("相位 / (°)")
     _khz(ax, fmax_hz)
     ax.legend()
@@ -92,7 +100,7 @@ def group_delay(series, path, *, fmax_hz, fs):
     fig, ax = plt.subplots(figsize=(WIDTH_IN, 2.8))
     for s in series:
         keep = s.response.f <= fmax_hz
-        ax.plot(s.response.f[keep] / 1000.0, s.response.gd[keep], label=s.label, **s.style)
+        ax.plot(s.response.f[keep] / 1000.0, s.response.gd[keep], label=s.legend, **s.style)
     ax.set_ylabel("群延迟 / 采样点")
     ax.set_ylim(bottom=0)
     right = ax.secondary_yaxis("right", functions=(lambda n: n / fs * 1000.0, lambda ms: ms * fs / 1000.0))

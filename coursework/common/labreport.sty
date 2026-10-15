@@ -1,0 +1,50 @@
+% Shared layout for the lab reports, loaded by each coursework/*/report.tex
+% after \documentclass[zihao=-4, linespread=1.5, fontset=none]{ctexart}.
+%
+% The course asks for 宋体 and Times New Roman, 12 pt (小四), 1.5 line spacing;
+% the class options set size and spacing, this file the fonts and the rest.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{labreport}
+
+\RequirePackage[a4paper, margin=2.5cm]{geometry}
+\RequirePackage{lmodern}  % scalable math extension fonts at 小四
+\RequirePackage{fontspec}
+\setmainfont{Times New Roman}
+\setCJKmainfont{SimSun}[AutoFakeBold=2.5, AutoFakeSlant=0.2]
+\setCJKsansfont{SimSun}[AutoFakeBold=2.5]
+\setCJKmonofont{SimSun}
+\setmonofont{Menlo}[Scale=0.85]
+
+\RequirePackage{amsmath}
+\RequirePackage{graphicx}
+\RequirePackage{booktabs}
+\RequirePackage{siunitx}
+\RequirePackage{xcolor}
+\RequirePackage{caption}
+\RequirePackage{float}
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, fit, shapes.geometric}
+\RequirePackage{listings}
+\RequirePackage[hidelinks]{hyperref}
+
+\captionsetup{font=small, labelsep=quad}
+\sisetup{group-separator={,}, group-minimum-digits=4}
+
+\lstset{
+  basicstyle=\ttfamily\small\linespread{1.0}\selectfont,
+  numbers=left, numberstyle=\tiny\color{gray}, numbersep=6pt,
+  frame=lines, framesep=4pt, breaklines=true, columns=fullflexible,
+  tabsize=4, showstringspaces=false,
+  keywordstyle=\color{blue!60!black}, commentstyle=\color{green!40!black},
+  stringstyle=\color{red!50!black},
+}
+
+% Block-diagram styles shared by the reports
+\tikzset{
+  block/.style={draw, minimum height=2.2em, minimum width=3.6em, align=center},
+  sum/.style={draw, circle, inner sep=0pt, minimum size=1.1em},
+  dot/.style={circle, fill, inner sep=0pt, minimum size=3pt},
+  sig/.style={-{Stealth[length=2mm]}},
+}
+
+\endinput
