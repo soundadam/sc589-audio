@@ -1,0 +1,34 @@
+% E02 report. Built by `make e02`; numbers come from build/E02/results.tex.
+\documentclass[zihao=-4, linespread=1.5, fontset=none]{ctexart}
+\usepackage{labreport}
+
+\graphicspath{{../../build/E02/}}
+\input{../../build/E02/results.tex}
+\input{../../build/E02/author.tex}
+
+\title{实验 E02\quad 多速率处理}
+\author{\ReportAuthor\quad\url{https://github.com/soundadam}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{实验内容}
+
+在 ADSP-SC589 EZ-Board 的音频回环上（$f_s=\SampleRate$~Hz，每块 \BlockFrames{} 帧）做降采样与多速率处理。
+
+完整代码在 \url{https://github.com/soundadam/sc589-audio}，本实验对应其中的 \texttt{coursework/E02-multirate} 目录。
+
+\section{处理链的幅频响应}
+
+图~\ref{fig:magnitude} 是把单位冲激送进 \texttt{AudioProcess}、取前 \IrLen{} 个输出样本算出的幅频响应。
+运算用的是固件同一份 C 代码，在 Mac 上编译运行，输入输出都是 24 位定点。
+
+\begin{figure}[H]
+\centering
+\includegraphics{magnitude.pdf}
+\caption{处理链各声道的幅频响应}
+\label{fig:magnitude}
+\end{figure}
+
+\end{document}

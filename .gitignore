@@ -49,6 +49,9 @@ Desktop.ini
 # Loader streams copied back by host/build/remote_build.sh
 /build/
 
+# Exploration that is not kept (coursework/*/README.md)
+/scratch/
+
 # Python
 __pycache__/
 /.venv/

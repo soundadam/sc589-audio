@@ -26,7 +26,7 @@ macOS 上不能编译；调试器 ICE 的驱动也没有 Mac 版。我手边只�
 | `firmware/audio_loopback/platform/` | 串口控制台（`uart_console.c`）；`filter_report.c` 在启动时把滤波器的冲激响应和周期数打到控制台 |
 | `firmware/audio_loopback/cces/SC589/sharc/` | 三个核的 CCES 工程，源码通过链接引用 `firmware/audio_loopback/` 下的文件 |
 | `host/board/` | Mac 端的 UART 启动和日志工具（`uart_boot.py`、`uart_log.py`）及其测试 |
-| `host/dsplab/` | Mac 端的滤波器设计与分析包（系数生成 C 表、频响、读板卡日志、作图），由根目录 `pyproject.toml` 用 uv 管理 |
+| `host/dsplab/` | Mac 端的滤波器设计与分析包（系数生成 C 表、频响、读板卡日志、作图，以及在 Mac 上跑 `dsp/` 的 C 代码：`cdsp`、`wavrun`），由根目录 `pyproject.toml` 用 uv 管理 |
 | `host/build/` | 远端构建：Mac 上运行的 `remote_build.sh`，以及它在 Windows 上调用的 `remote_build.ps1`、`make_ldr.ps1` |
 | `coursework/` | 课程实验：每次一个目录（要求清单、设计脚本、作图脚本、报告源文件），`common/` 放报告的共用样式 |
 | `docs/adr/` | 架构决策记录 |

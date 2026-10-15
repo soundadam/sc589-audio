@@ -4,4 +4,6 @@
     response    magnitude, phase and group delay from coefficients or an impulse response
     boardlog    read the measurements the firmware prints on the UART console
     plot        figure style and the comparison plots the lab reports share
+    cdsp        run firmware/audio_loopback/dsp/ on the Mac through ctypes
+    wavrun      run a wav file through that code and listen to the result
 """
