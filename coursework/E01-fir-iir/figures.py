@@ -1,6 +1,6 @@
 """E01 figures and numbers for the report, from the design and the board log.
 
-    make board                                   # at tag e01, writes build/E01/board.log
+    make board EXPERIMENT=E01                    # writes build/E01/board.log
     uv run coursework/E01-fir-iir/figures.py     # writes build/E01/
 
 The impulse figure overlays what the SHARC computed from the same

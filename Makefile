@@ -13,17 +13,31 @@ check:
 # Build on the Windows host (host/build/remote_build.sh), then boot the board over
 # UART and exit on its console verdict (host/board/uart_boot.py). Press reset when
 # uart_boot.py starts waiting. The console lines are kept in
-# build/$(EXPERIMENT)/board.log, next to the report that reads them.
-.PHONY: board
+# build/$(EXPERIMENT)/board.log, next to the report that reads them, and the
+# loader stream in build/$(EXPERIMENT)/, where make boot starts it again without
+# a build.
+#
+#     make board                   # the working tree, E02
+#     make board EXPERIMENT=E01    # the firmware at tag e01
+#     make boot EXPERIMENT=E01     # the loader stream the last make board kept
+.PHONY: board boot
 
-# The experiment whose processing the firmware in this tree runs
 EXPERIMENT = E02
+# The commit each experiment's firmware is built from; empty: the working tree
+REV_E01 = e01
+REV_E02 =
+LDR = build/$(EXPERIMENT)/adc_dac_playback_SC589_uartslave.ldr
 
 board:
-	host/build/remote_build.sh
+	host/build/remote_build.sh $(REV_$(EXPERIMENT))
 	mkdir -p build/$(EXPERIMENT)
+	cp build/adc_dac_playback_SC589_uartslave.ldr $(LDR)
+	$(MAKE) boot
+
+boot:
+	@test -f $(LDR) || { echo "no $(LDR): run make board EXPERIMENT=$(EXPERIMENT)" >&2; exit 1; }
 	uv run --no-project --with-requirements host/board/requirements.txt \
-		python host/board/uart_boot.py build/adc_dac_playback_SC589_uartslave.ldr --wait 60 \
+		python host/board/uart_boot.py $(LDR) --wait 60 \
 		--log build/$(EXPERIMENT)/board.log
 
 # Lab reports: each experiment's figures.py writes its figures and numbers into
@@ -42,7 +56,7 @@ define report
 endef
 
 # E01 reads the impulse responses and cycle counts in build/E01/board.log, from
-# make board on the firmware at tag e01
+# make board EXPERIMENT=E01
 .PHONY: e01 e02
 
 e01:
