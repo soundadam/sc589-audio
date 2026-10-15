@@ -8,15 +8,17 @@
  *            24-bit value in [-2^23, 2^23 - 1]; no shifting or masking is
  *            needed before the conversion.
  *
- *            Each block is de-interleaved into one contiguous float array per
- *            channel, filtered channel by channel, then converted back and
- *            re-interleaved. The contiguous per-channel layout is what the
- *            CCES run-time fir() in filter.h expects, so FirBlock() can later
- *            be replaced by that call without touching the rest.
+ *            Each channel of a block is de-interleaved into a contiguous
+ *            float array, filtered, then converted back and re-interleaved.
+ *            Even channels run the low-pass FIR, odd channels the low-pass
+ *            IIR (lowpass_coeffs.h), so a stereo pair carries one of each
+ *            for the same input.
  */
 
-#include <string.h>
 #include "audio_process.h"
+#include "fir.h"
+#include "biquad.h"
+#include "lowpass_coeffs.h"
 
 /* Full scale of a 24-bit sample: 1.0f maps to 2^23 */
 #define S24_SCALE       (8388608.0f)
@@ -25,39 +27,19 @@
 #define S24_MAX         (8388607.0f)
 #define S24_MIN         (-8388608.0f)
 
-/* Number of FIR coefficients */
-#define FIR_TAPS        (31u)
-/* Past input samples each channel carries from one block into the next */
-#define FIR_HISTORY     (FIR_TAPS - 1u)
+/* Even channels take the FIR, odd channels the IIR */
+#define FIR_CHANNELS    ((AUDIO_PROCESS_MAX_CHANNELS + 1u) / 2u)
+#define IIR_CHANNELS    (AUDIO_PROCESS_MAX_CHANNELS / 2u)
 
-/*
- * Low-pass, 31 taps, windowed sinc: cut-off 4 kHz at fs = 48 kHz (-6 dB),
- * Hamming window, normalised to unity gain at DC. About -1.9 dB at 3 kHz,
- * -29.5 dB at 6 kHz and below -52 dB from 8 kHz up; group delay 15 samples.
- *
- * The response is symmetric, so the order of the table does not matter,
- * which also holds for fir() in filter.h (it takes coefficients reversed).
- */
-static const float FirCoeffs[FIR_TAPS] =
-{
-	 1.692246424e-03f,  1.767507786e-03f,  1.461626058e-03f,  0.0f,
-	-3.348916074e-03f, -8.518383780e-03f, -1.402633194e-02f, -1.689652016e-02f,
-	-1.332832381e-02f,  0.0f,              2.443180774e-02f,  5.824101969e-02f,
-	 9.647368011e-02f,  1.319292809e-01f,  1.570533550e-01f,  1.661359041e-01f,
-	 1.570533550e-01f,  1.319292809e-01f,  9.647368011e-02f,  5.824101969e-02f,
-	 2.443180774e-02f,  0.0f,             -1.332832381e-02f, -1.689652016e-02f,
-	-1.402633194e-02f, -8.518383780e-03f, -3.348916074e-03f,  0.0f,
-	 1.461626058e-03f,  1.767507786e-03f,  1.692246424e-03f
-};
+static float FirDelay[FIR_CHANNELS][LOWPASS_FIR_TAPS];
+static FirFilter Fir[FIR_CHANNELS];
 
-/*
- * Per-channel working buffer. The first FIR_HISTORY entries hold the tail of
- * the previous block, the rest the current block, so that every output sample
- * sees FIR_TAPS contiguous inputs without wrapping an index.
- */
-static float FirWork[AUDIO_PROCESS_MAX_CHANNELS][FIR_HISTORY + AUDIO_PROCESS_MAX_FRAMES];
-/* Per-channel filtered output of the current block */
-static float FirOut[AUDIO_PROCESS_MAX_CHANNELS][AUDIO_PROCESS_MAX_FRAMES];
+static float IirState[IIR_CHANNELS][LOWPASS_IIR_SECTIONS * BIQUAD_STATES];
+static BiquadCascade Iir[IIR_CHANNELS];
+
+/* One channel of the current chunk, before and after filtering */
+static float ChannelIn[AUDIO_PROCESS_MAX_FRAMES];
+static float ChannelOut[AUDIO_PROCESS_MAX_FRAMES];
 
 /*
  * Converts a sign-extended 24-bit sample to float in [-1.0, 1.0).
@@ -90,37 +72,27 @@ static inline int32_t FloatToS24(float fSample)
 }
 
 /*
- * Filters one block of one channel.
+ * Sets up every channel's filter and clears its state.
  *
  * Parameters
- *  pWork       FIR_HISTORY past samples followed by nFrames new ones; on
- *              return the last FIR_HISTORY samples are moved to the front
- *              ready for the next block
- *  pOut        nFrames filtered samples
- *  nFrames     number of new samples in pWork
+ *  None
  *
  * Returns
  *  None
  *
  */
-static void FirBlock(float *pWork, float *pOut, uint32_t nFrames)
+void AudioProcessInit(void)
 {
-	uint32_t nFrame;
-	uint32_t nTap;
-	float fAcc;
+	uint32_t nIndex;
 
-	for (nFrame = 0u; nFrame < nFrames; nFrame++)
+	for (nIndex = 0u; nIndex < FIR_CHANNELS; nIndex++)
 	{
-		/* pWork[nFrame + FIR_HISTORY] is the newest input for this output */
-		fAcc = 0.0f;
-		for (nTap = 0u; nTap < FIR_TAPS; nTap++)
-		{
-			fAcc += FirCoeffs[nTap] * pWork[nFrame + FIR_HISTORY - nTap];
-		}
-		pOut[nFrame] = fAcc;
+		FirInit(&Fir[nIndex], LowpassFirCoeffs, FirDelay[nIndex], LOWPASS_FIR_TAPS);
 	}
-
-	memmove(pWork, &pWork[nFrames], FIR_HISTORY * sizeof(float));
+	for (nIndex = 0u; nIndex < IIR_CHANNELS; nIndex++)
+	{
+		BiquadInit(&Iir[nIndex], LowpassIirSos, IirState[nIndex], LOWPASS_IIR_SECTIONS);
+	}
 }
 
 /*
@@ -154,36 +126,38 @@ void AudioProcess(const int32_t *pIn, int32_t *pOut,
 			nChunk = AUDIO_PROCESS_MAX_FRAMES;
 		}
 
-		/* de-interleave and convert, after each channel's history */
-		for (nFrame = 0u; nFrame < nChunk; nFrame++)
+		for (nChannel = 0u; nChannel < nChannels; nChannel++)
 		{
-			for (nChannel = 0u; nChannel < nChannels; nChannel++)
+			if (nChannel >= AUDIO_PROCESS_MAX_CHANNELS)
 			{
-				nIndex = ((nDone + nFrame) * nChannels) + nChannel;
-				if (nChannel < AUDIO_PROCESS_MAX_CHANNELS)
+				/* no filter state for this channel: pass it through */
+				for (nFrame = 0u; nFrame < nChunk; nFrame++)
 				{
-					FirWork[nChannel][FIR_HISTORY + nFrame] = S24ToFloat(pIn[nIndex]);
-				}
-				else
-				{
-					/* no filter state for this channel: pass it through */
+					nIndex = ((nDone + nFrame) * nChannels) + nChannel;
 					pOut[nIndex] = pIn[nIndex];
 				}
+				continue;
 			}
-		}
 
-		for (nChannel = 0u; (nChannel < nChannels) && (nChannel < AUDIO_PROCESS_MAX_CHANNELS); nChannel++)
-		{
-			FirBlock(FirWork[nChannel], FirOut[nChannel], nChunk);
-		}
-
-		/* convert back and re-interleave */
-		for (nFrame = 0u; nFrame < nChunk; nFrame++)
-		{
-			for (nChannel = 0u; (nChannel < nChannels) && (nChannel < AUDIO_PROCESS_MAX_CHANNELS); nChannel++)
+			/* de-interleave and convert */
+			for (nFrame = 0u; nFrame < nChunk; nFrame++)
 			{
-				nIndex = ((nDone + nFrame) * nChannels) + nChannel;
-				pOut[nIndex] = FloatToS24(FirOut[nChannel][nFrame]);
+				ChannelIn[nFrame] = S24ToFloat(pIn[((nDone + nFrame) * nChannels) + nChannel]);
+			}
+
+			if ((nChannel % 2u) == 0u)
+			{
+				FirProcess(&Fir[nChannel / 2u], ChannelIn, ChannelOut, nChunk);
+			}
+			else
+			{
+				BiquadProcess(&Iir[nChannel / 2u], ChannelIn, ChannelOut, nChunk);
+			}
+
+			/* convert back and re-interleave */
+			for (nFrame = 0u; nFrame < nChunk; nFrame++)
+			{
+				pOut[((nDone + nFrame) * nChannels) + nChannel] = FloatToS24(ChannelOut[nFrame]);
 			}
 		}
 	}

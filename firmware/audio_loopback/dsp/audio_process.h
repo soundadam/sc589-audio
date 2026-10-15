@@ -25,10 +25,17 @@
 #define AUDIO_PROCESS_MAX_CHANNELS  (4u)
 
 /*
+ * Sets up the filters and clears their state. Call once before the first
+ * AudioProcess(), and again to restart from silence.
+ */
+void AudioProcessInit(void);
+
+/*
  * Produces one output block from one input block.
  *
  * Each channel is converted from sign-extended 24-bit fixed point to float,
- * low-pass filtered, then saturated and rounded back. Filter state carries
+ * low-pass filtered (FIR on even channels, IIR on odd ones), then saturated
+ * and rounded back. Filter state carries
  * over between calls, so consecutive blocks must belong to one stream.
  *
  * Parameters

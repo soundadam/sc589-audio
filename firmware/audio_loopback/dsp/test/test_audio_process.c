@@ -1,14 +1,12 @@
 /*!
  * @file      test_audio_process.c
- * @brief     Host-side tests for audio_process.c.
+ * @brief     Host-side tests for the dsp/ sources.
  *
- *            audio_process.c is included directly rather than linked, so the
- *            tests can see its static coefficients, work buffers and
- *            conversion helpers. Builds with any C99 compiler; see Makefile.
- *
- *            Usage
- *             test_audio_process            run the tests, exit 1 on failure
- *             test_audio_process sweep      print the frequency response as CSV
+ *            The sources are included directly rather than linked, so the
+ *            tests can see the static conversion helpers in audio_process.c.
+ *            Expected values come from the same coefficient tables the
+ *            firmware uses, recomputed here in double precision. Builds with
+ *            any C99 compiler; see Makefile.
  */
 
 #include <math.h>
@@ -17,6 +15,9 @@
 #include <string.h>
 
 #include "../audio_process.c"
+#include "../fir.c"
+#include "../biquad.c"
+#include "../lowpass_coeffs.c"
 
 #ifndef M_PI
 #define M_PI            (3.14159265358979323846)
@@ -25,17 +26,29 @@
 #define FS              (48000.0)
 #define TEST_CHANNELS   (4u)
 #define BLOCK_FRAMES    (64u)
-/* Blocks run through the filter per tone: one second of audio */
+/* Blocks run through the filters per tone: one second of audio */
 #define TONE_BLOCKS     (750u)
 #define TONE_FRAMES     (TONE_BLOCKS * BLOCK_FRAMES)
+/* Frames left out of the gain measurement while the IIR settles */
+#define TONE_SETTLE     (TONE_FRAMES / 4u)
 /* Tone amplitude, as a fraction of full scale */
 #define TONE_LEVEL      (0.5)
 /* Allowed difference between measured and computed gain */
 #define GAIN_TOL_DB     (0.05)
+/* Allowed difference between a float filter and its double reference */
+#define FILTER_TOL      (1e-5)
+/* Samples per filter in the float-versus-double comparisons */
+#define REF_FRAMES      (4096u)
+/* An awkward block size, to split streams off the 64-frame grid */
+#define ODD_BLOCK       (7u)
 
 static int32_t In[TONE_FRAMES * TEST_CHANNELS];
 static int32_t Out[TONE_FRAMES * TEST_CHANNELS];
 static int32_t Ref[TONE_FRAMES * TEST_CHANNELS];
+
+static float SigIn[REF_FRAMES];
+static float SigOut[REF_FRAMES];
+static float SigRef[REF_FRAMES];
 
 static uint32_t nFailures = 0u;
 
@@ -52,51 +65,87 @@ static uint32_t nFailures = 0u;
 	} while (0)
 
 /*
- * Clears the filter history so each test starts from silence.
+ * Fills pSig with uniform noise in [-fLevel, fLevel), the same every run.
  */
-static void ResetFilter(void)
+static void Noise(float *pSig, uint32_t nFrames, float fLevel)
 {
-	memset(FirWork, 0, sizeof(FirWork));
-	memset(FirOut, 0, sizeof(FirOut));
+	uint32_t nFrame;
+
+	srand(1u);
+	for (nFrame = 0u; nFrame < nFrames; nFrame++)
+	{
+		pSig[nFrame] = fLevel * (2.0f * ((float)rand() / ((float)RAND_MAX + 1.0f)) - 1.0f);
+	}
+}
+
+static double MaxAbsDiff(const float *pA, const float *pB, uint32_t nFrames)
+{
+	double fMax = 0.0;
+	uint32_t nFrame;
+
+	for (nFrame = 0u; nFrame < nFrames; nFrame++)
+	{
+		double fDiff = fabs((double)pA[nFrame] - (double)pB[nFrame]);
+		fMax = (fDiff > fMax) ? fDiff : fMax;
+	}
+	return fMax;
 }
 
 /*
- * Gain of the FIR at fHz, computed from the coefficients.
+ * Gain of the low-pass FIR (bIir = 0) or IIR (bIir = 1) at fHz, computed
+ * from the coefficient tables.
  */
-static double ComputedGainDb(double fHz)
+static double ComputedGainDb(int bIir, double fHz)
 {
-	double fRe = 0.0;
-	double fIm = 0.0;
 	double fW = 2.0 * M_PI * fHz / FS;
+	double fGain = 1.0;
 	uint32_t nTap;
+	uint32_t nSection;
 
-	for (nTap = 0u; nTap < FIR_TAPS; nTap++)
+	if (!bIir)
 	{
-		fRe += FirCoeffs[nTap] * cos(fW * nTap);
-		fIm -= FirCoeffs[nTap] * sin(fW * nTap);
+		double fRe = 0.0;
+		double fIm = 0.0;
+		for (nTap = 0u; nTap < LOWPASS_FIR_TAPS; nTap++)
+		{
+			fRe += LowpassFirCoeffs[nTap] * cos(fW * nTap);
+			fIm -= LowpassFirCoeffs[nTap] * sin(fW * nTap);
+		}
+		return 20.0 * log10(sqrt((fRe * fRe) + (fIm * fIm)));
 	}
 
-	return 20.0 * log10(sqrt((fRe * fRe) + (fIm * fIm)));
+	for (nSection = 0u; nSection < LOWPASS_IIR_SECTIONS; nSection++)
+	{
+		const float *pC = &LowpassIirSos[nSection * BIQUAD_COEFFS];
+		/* numerator and denominator at z = e^{jw} */
+		double fNumRe = pC[0] + (pC[1] * cos(fW)) + (pC[2] * cos(2.0 * fW));
+		double fNumIm = -(pC[1] * sin(fW)) - (pC[2] * sin(2.0 * fW));
+		double fDenRe = 1.0 + (pC[3] * cos(fW)) + (pC[4] * cos(2.0 * fW));
+		double fDenIm = -(pC[3] * sin(fW)) - (pC[4] * sin(2.0 * fW));
+		fGain *= sqrt(((fNumRe * fNumRe) + (fNumIm * fNumIm)) /
+		              ((fDenRe * fDenRe) + (fDenIm * fDenIm)));
+	}
+	return 20.0 * log10(fGain);
 }
 
 /*
- * Runs a tone through channel 0 in 64-frame blocks, as audio_path.c does,
- * and returns the gain measured from the output RMS once the filter has
- * settled.
+ * Runs a tone through channel nChannel in 64-frame blocks, as audio_path.c
+ * does, and returns the gain measured from the output RMS once the filter
+ * has settled.
  */
-static double MeasuredGainDb(double fHz)
+static double MeasuredGainDb(uint32_t nChannel, double fHz)
 {
 	uint32_t nFrame;
 	uint32_t nBlock;
 	double fSumIn = 0.0;
 	double fSumOut = 0.0;
 
-	ResetFilter();
+	AudioProcessInit();
 	memset(In, 0, sizeof(In));
 
 	for (nFrame = 0u; nFrame < TONE_FRAMES; nFrame++)
 	{
-		In[nFrame * TEST_CHANNELS] =
+		In[(nFrame * TEST_CHANNELS) + nChannel] =
 			FloatToS24((float)(TONE_LEVEL * sin(2.0 * M_PI * fHz * nFrame / FS)));
 	}
 
@@ -107,11 +156,10 @@ static double MeasuredGainDb(double fHz)
 		             BLOCK_FRAMES, TEST_CHANNELS);
 	}
 
-	/* skip the first block, where the history is still filling */
-	for (nFrame = BLOCK_FRAMES; nFrame < TONE_FRAMES; nFrame++)
+	for (nFrame = TONE_SETTLE; nFrame < TONE_FRAMES; nFrame++)
 	{
-		double fIn = In[nFrame * TEST_CHANNELS];
-		double fOut = Out[nFrame * TEST_CHANNELS];
+		double fIn = In[(nFrame * TEST_CHANNELS) + nChannel];
+		double fOut = Out[(nFrame * TEST_CHANNELS) + nChannel];
 		fSumIn += fIn * fIn;
 		fSumOut += fOut * fOut;
 	}
@@ -153,31 +201,105 @@ static void TestConversions(void)
 	}
 }
 
-static void TestImpulse(void)
+static void TestFirImpulse(void)
 {
-	const int32_t nAmp = 4194304;   /* 0.5 of full scale */
+	float Delay[LOWPASS_FIR_TAPS];
+	FirFilter Filter;
 	uint32_t nFrame;
+	uint32_t nDone;
 
-	printf("impulse response\n");
+	printf("FIR impulse response\n");
 
-	ResetFilter();
-	memset(In, 0, sizeof(In));
-	In[0] = nAmp;
-	AudioProcess(In, Out, BLOCK_FRAMES, TEST_CHANNELS);
+	memset(SigIn, 0, sizeof(SigIn));
+	SigIn[0] = 1.0f;
 
-	for (nFrame = 0u; nFrame < BLOCK_FRAMES; nFrame++)
+	/* fed in odd-sized blocks, so the delay line wraps mid-block */
+	FirInit(&Filter, LowpassFirCoeffs, Delay, LOWPASS_FIR_TAPS);
+	for (nDone = 0u; nDone < 3u * LOWPASS_FIR_TAPS; nDone += ODD_BLOCK)
 	{
-		int32_t nExpect = (nFrame < FIR_TAPS) ? FloatToS24(FirCoeffs[nFrame] * 0.5f) : 0;
-		CHECK(Out[nFrame * TEST_CHANNELS] == nExpect,
-		      "frame %u: got %d, expected %d", nFrame, Out[nFrame * TEST_CHANNELS], nExpect);
+		FirProcess(&Filter, &SigIn[nDone], &SigOut[nDone], ODD_BLOCK);
 	}
+
+	for (nFrame = 0u; nFrame < 3u * LOWPASS_FIR_TAPS; nFrame++)
+	{
+		float fExpect = (nFrame < LOWPASS_FIR_TAPS) ? LowpassFirCoeffs[nFrame] : 0.0f;
+		CHECK(SigOut[nFrame] == fExpect, "h[%u]: got %g, expected %g", nFrame, SigOut[nFrame], fExpect);
+	}
+}
+
+static void TestFirMatchesConvolution(void)
+{
+	float Delay[LOWPASS_FIR_TAPS];
+	FirFilter Filter;
+	uint32_t nFrame;
+	uint32_t nTap;
+
+	printf("FIR against direct convolution\n");
+
+	Noise(SigIn, REF_FRAMES, 0.5f);
+	for (nFrame = 0u; nFrame < REF_FRAMES; nFrame++)
+	{
+		double fAcc = 0.0;
+		for (nTap = 0u; (nTap < LOWPASS_FIR_TAPS) && (nTap <= nFrame); nTap++)
+		{
+			fAcc += (double)LowpassFirCoeffs[nTap] * SigIn[nFrame - nTap];
+		}
+		SigRef[nFrame] = (float)fAcc;
+	}
+
+	/* in place, as the firmware may call it */
+	memcpy(SigOut, SigIn, sizeof(SigOut));
+	FirInit(&Filter, LowpassFirCoeffs, Delay, LOWPASS_FIR_TAPS);
+	FirProcess(&Filter, SigOut, SigOut, REF_FRAMES);
+
+	CHECK(MaxAbsDiff(SigOut, SigRef, REF_FRAMES) < FILTER_TOL,
+	      "max error %g", MaxAbsDiff(SigOut, SigRef, REF_FRAMES));
+}
+
+static void TestBiquadMatchesDifferenceEquation(void)
+{
+	float State[LOWPASS_IIR_SECTIONS * BIQUAD_STATES];
+	BiquadCascade Cascade;
+	/* per section: x[n-1], x[n-2], y[n-1], y[n-2] */
+	double History[LOWPASS_IIR_SECTIONS][4];
+	uint32_t nFrame;
+	uint32_t nSection;
+
+	printf("IIR against its difference equation\n");
+
+	Noise(SigIn, REF_FRAMES, 0.5f);
+	memset(History, 0, sizeof(History));
+	for (nFrame = 0u; nFrame < REF_FRAMES; nFrame++)
+	{
+		double fX = SigIn[nFrame];
+		for (nSection = 0u; nSection < LOWPASS_IIR_SECTIONS; nSection++)
+		{
+			const float *pC = &LowpassIirSos[nSection * BIQUAD_COEFFS];
+			double *pH = History[nSection];
+			double fY = (pC[0] * fX) + (pC[1] * pH[0]) + (pC[2] * pH[1])
+			          - (pC[3] * pH[2]) - (pC[4] * pH[3]);
+			pH[1] = pH[0];
+			pH[0] = fX;
+			pH[3] = pH[2];
+			pH[2] = fY;
+			fX = fY;
+		}
+		SigRef[nFrame] = (float)fX;
+	}
+
+	memcpy(SigOut, SigIn, sizeof(SigOut));
+	BiquadInit(&Cascade, LowpassIirSos, State, LOWPASS_IIR_SECTIONS);
+	BiquadProcess(&Cascade, SigOut, SigOut, REF_FRAMES);
+
+	CHECK(MaxAbsDiff(SigOut, SigRef, REF_FRAMES) < FILTER_TOL,
+	      "max error %g", MaxAbsDiff(SigOut, SigRef, REF_FRAMES));
 }
 
 static void TestBlockBoundary(void)
 {
 	const uint32_t nFrames = 4u * BLOCK_FRAMES;
 	uint32_t nIndex;
-	uint32_t nBlock;
+	uint32_t nDone;
 
 	printf("block boundaries\n");
 
@@ -188,15 +310,15 @@ static void TestBlockBoundary(void)
 	}
 
 	/* one call, split internally into AUDIO_PROCESS_MAX_FRAMES chunks */
-	ResetFilter();
+	AudioProcessInit();
 	AudioProcess(In, Ref, nFrames, TEST_CHANNELS);
 
 	/* many small calls of an awkward size */
-	ResetFilter();
-	for (nBlock = 0u; nBlock < nFrames; nBlock += 7u)
+	AudioProcessInit();
+	for (nDone = 0u; nDone < nFrames; nDone += ODD_BLOCK)
 	{
-		uint32_t nChunk = ((nFrames - nBlock) < 7u) ? (nFrames - nBlock) : 7u;
-		AudioProcess(&In[nBlock * TEST_CHANNELS], &Out[nBlock * TEST_CHANNELS],
+		uint32_t nChunk = ((nFrames - nDone) < ODD_BLOCK) ? (nFrames - nDone) : ODD_BLOCK;
+		AudioProcess(&In[nDone * TEST_CHANNELS], &Out[nDone * TEST_CHANNELS],
 		             nChunk, TEST_CHANNELS);
 	}
 
@@ -204,113 +326,112 @@ static void TestBlockBoundary(void)
 	      "output depends on how the stream is split into blocks");
 }
 
+/*
+ * An impulse on one channel comes out of that channel only, shaped by the
+ * FIR on even channels and the IIR on odd ones; channels past the maximum
+ * pass straight through.
+ */
 static void TestChannels(void)
 {
-	const uint32_t nChannels = 6u;
-	uint32_t nFrame;
+	const uint32_t nChannels = AUDIO_PROCESS_MAX_CHANNELS + 2u;
+	const float fAmp = 0.5f;
+	float Delay[LOWPASS_FIR_TAPS];
+	float State[LOWPASS_IIR_SECTIONS * BIQUAD_STATES];
+	FirFilter Filter;
+	BiquadCascade Cascade;
+	uint32_t nDriven;
 	uint32_t nChannel;
+	uint32_t nFrame;
 
 	printf("channels\n");
 
-	ResetFilter();
-	memset(In, 0, sizeof(In));
-	for (nFrame = 0u; nFrame < BLOCK_FRAMES; nFrame++)
-	{
-		In[nFrame * nChannels] = FloatToS24((float)(0.5 * sin(2.0 * M_PI * 1000.0 * nFrame / FS)));
-		In[(nFrame * nChannels) + 4u] = (int32_t)(nFrame * 1000u);
-		In[(nFrame * nChannels) + 5u] = -(int32_t)(nFrame * 1000u);
-	}
-	AudioProcess(In, Out, BLOCK_FRAMES, nChannels);
+	/* each filter's response to the impulse, computed on its own */
+	memset(SigIn, 0, sizeof(SigIn));
+	SigIn[0] = fAmp;
+	FirInit(&Filter, LowpassFirCoeffs, Delay, LOWPASS_FIR_TAPS);
+	FirProcess(&Filter, SigIn, SigRef, BLOCK_FRAMES);
+	BiquadInit(&Cascade, LowpassIirSos, State, LOWPASS_IIR_SECTIONS);
+	BiquadProcess(&Cascade, SigIn, SigOut, BLOCK_FRAMES);
 
-	for (nFrame = 0u; nFrame < BLOCK_FRAMES; nFrame++)
+	for (nDriven = 0u; nDriven < AUDIO_PROCESS_MAX_CHANNELS; nDriven++)
 	{
-		/* silent channels stay silent: no crosstalk from channel 0 */
-		for (nChannel = 1u; nChannel < AUDIO_PROCESS_MAX_CHANNELS; nChannel++)
+		const float *pExpect = ((nDriven % 2u) == 0u) ? SigRef : SigOut;
+
+		AudioProcessInit();
+		memset(In, 0, sizeof(In));
+		In[nDriven] = FloatToS24(fAmp);
+		for (nFrame = 0u; nFrame < BLOCK_FRAMES; nFrame++)
 		{
-			CHECK(Out[(nFrame * nChannels) + nChannel] == 0,
-			      "frame %u channel %u: got %d", nFrame, nChannel, Out[(nFrame * nChannels) + nChannel]);
+			for (nChannel = AUDIO_PROCESS_MAX_CHANNELS; nChannel < nChannels; nChannel++)
+			{
+				In[(nFrame * nChannels) + nChannel] = (int32_t)((nFrame + 1u) * 1000u * nChannel);
+			}
 		}
-		/* channels past the maximum pass straight through */
-		for (nChannel = AUDIO_PROCESS_MAX_CHANNELS; nChannel < nChannels; nChannel++)
+		AudioProcess(In, Out, BLOCK_FRAMES, nChannels);
+
+		for (nFrame = 0u; nFrame < BLOCK_FRAMES; nFrame++)
 		{
-			CHECK(Out[(nFrame * nChannels) + nChannel] == In[(nFrame * nChannels) + nChannel],
-			      "frame %u channel %u not passed through", nFrame, nChannel);
+			for (nChannel = 0u; nChannel < nChannels; nChannel++)
+			{
+				int32_t nGot = Out[(nFrame * nChannels) + nChannel];
+				int32_t nExpect;
+
+				if (nChannel >= AUDIO_PROCESS_MAX_CHANNELS)
+				{
+					nExpect = In[(nFrame * nChannels) + nChannel];
+				}
+				else if (nChannel == nDriven)
+				{
+					nExpect = FloatToS24(pExpect[nFrame]);
+				}
+				else
+				{
+					nExpect = 0;
+				}
+				CHECK(nGot == nExpect, "impulse on %u, frame %u channel %u: got %d, expected %d",
+				      nDriven, nFrame, nChannel, nGot, nExpect);
+			}
 		}
 	}
 }
 
 static void TestFrequencyResponse(void)
 {
-	/* points quoted in the comment above FirCoeffs */
-	static const double Freqs[] = { 0.0, 1000.0, 3000.0, 4000.0, 6000.0, 8000.0, 12000.0 };
+	/* across the pass band, the transition and the stop band */
+	static const double Freqs[] = { 500.0, 1000.0, 1500.0, 2000.0, 2500.0, 3000.0, 4000.0, 6000.0, 12000.0 };
+	static const char *Names[] = { "FIR", "IIR" };
 	uint32_t nPoint;
+	uint32_t nChannel;
 
 	printf("frequency response\n");
-	printf("  %8s %12s %12s\n", "Hz", "measured dB", "computed dB");
+	printf("  %4s %8s %12s %12s\n", "", "Hz", "measured dB", "computed dB");
 
-	for (nPoint = 0u; nPoint < (sizeof(Freqs) / sizeof(Freqs[0])); nPoint++)
+	for (nChannel = 0u; nChannel < 2u; nChannel++)
 	{
-		double fMeasured;
-		double fComputed = ComputedGainDb(Freqs[nPoint]);
-
-		if (Freqs[nPoint] == 0.0)
+		for (nPoint = 0u; nPoint < (sizeof(Freqs) / sizeof(Freqs[0])); nPoint++)
 		{
-			/* a DC "tone" of all zeros has no energy; use a constant */
-			uint32_t nFrame;
-			ResetFilter();
-			for (nFrame = 0u; nFrame < BLOCK_FRAMES * 2u; nFrame++)
+			double fComputed = ComputedGainDb((int)nChannel, Freqs[nPoint]);
+			double fMeasured = MeasuredGainDb(nChannel, Freqs[nPoint]);
+
+			printf("  %4s %8.0f %12.2f %12.2f\n", Names[nChannel], Freqs[nPoint], fMeasured, fComputed);
+
+			/* far down the stop band the 24-bit rounding floor dominates */
+			if (fComputed > -60.0)
 			{
-				In[nFrame * TEST_CHANNELS] = 4194304;
+				CHECK(fabs(fMeasured - fComputed) < GAIN_TOL_DB,
+				      "%s %.0f Hz: measured %.3f dB, computed %.3f dB",
+				      Names[nChannel], Freqs[nPoint], fMeasured, fComputed);
 			}
-			AudioProcess(In, Out, BLOCK_FRAMES * 2u, TEST_CHANNELS);
-			fMeasured = 20.0 * log10(Out[(BLOCK_FRAMES * 2u - 1u) * TEST_CHANNELS] / 4194304.0);
 		}
-		else
-		{
-			fMeasured = MeasuredGainDb(Freqs[nPoint]);
-		}
-
-		printf("  %8.0f %12.2f %12.2f\n", Freqs[nPoint], fMeasured, fComputed);
-
-		/* far down the stop band the 24-bit rounding floor dominates */
-		if (fComputed > -60.0)
-		{
-			CHECK(fabs(fMeasured - fComputed) < GAIN_TOL_DB,
-			      "%.0f Hz: measured %.3f dB, computed %.3f dB",
-			      Freqs[nPoint], fMeasured, fComputed);
-		}
-	}
-
-	CHECK(fabs(ComputedGainDb(0.0)) < 0.01, "DC gain %.3f dB, expected 0", ComputedGainDb(0.0));
-	CHECK(fabs(ComputedGainDb(3000.0) + 1.9) < 0.1, "3 kHz %.2f dB, comment says -1.9", ComputedGainDb(3000.0));
-	CHECK(fabs(ComputedGainDb(6000.0) + 29.5) < 0.1, "6 kHz %.2f dB, comment says -29.5", ComputedGainDb(6000.0));
-	CHECK(ComputedGainDb(8000.0) < -52.0, "8 kHz %.2f dB, comment says below -52", ComputedGainDb(8000.0));
-}
-
-/*
- * Prints measured and computed gain from 100 Hz to 23.9 kHz as CSV.
- */
-static void Sweep(void)
-{
-	double fHz;
-
-	printf("hz,measured_db,computed_db\n");
-	for (fHz = 100.0; fHz < FS / 2.0; fHz += 100.0)
-	{
-		printf("%.0f,%.3f,%.3f\n", fHz, MeasuredGainDb(fHz), ComputedGainDb(fHz));
 	}
 }
 
-int main(int argc, char *argv[])
+int main(void)
 {
-	if ((argc > 1) && (strcmp(argv[1], "sweep") == 0))
-	{
-		Sweep();
-		return 0;
-	}
-
 	TestConversions();
-	TestImpulse();
+	TestFirImpulse();
+	TestFirMatchesConvolution();
+	TestBiquadMatchesDifferenceEquation();
 	TestBlockBoundary();
 	TestChannels();
 	TestFrequencyResponse();

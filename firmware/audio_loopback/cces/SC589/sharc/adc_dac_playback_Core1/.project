@@ -100,6 +100,16 @@
 			<locationURI>PARENT-4-PROJECT_LOC/dsp/audio_process.h</locationURI>
 		</link>
 		<link>
+			<name>src/biquad.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/biquad.c</locationURI>
+		</link>
+		<link>
+			<name>src/biquad.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/biquad.h</locationURI>
+		</link>
+		<link>
 			<name>src/board_setup.c</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.c</locationURI>
@@ -108,6 +118,36 @@
 			<name>src/board_setup.h</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.h</locationURI>
+		</link>
+		<link>
+			<name>src/filter_report.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/platform/filter_report.c</locationURI>
+		</link>
+		<link>
+			<name>src/filter_report.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/platform/filter_report.h</locationURI>
+		</link>
+		<link>
+			<name>src/fir.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fir.c</locationURI>
+		</link>
+		<link>
+			<name>src/fir.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fir.h</locationURI>
+		</link>
+		<link>
+			<name>src/lowpass_coeffs.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/lowpass_coeffs.c</locationURI>
+		</link>
+		<link>
+			<name>src/lowpass_coeffs.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/lowpass_coeffs.h</locationURI>
 		</link>
 		<link>
 			<name>src/uart_console.c</name>

@@ -50,3 +50,7 @@ Desktop.ini
 
 # Loader streams copied back by host/build/remote_build.sh
 /build/
+
+# Python
+__pycache__/
+/.venv/
