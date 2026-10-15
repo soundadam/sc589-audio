@@ -113,7 +113,7 @@ def main():
     parser.add_argument("--log", type=Path, default=BOARD_LOG, help="console log from make board")
     args = parser.parse_args()
 
-    fs = design.sample_rate()
+    fs = design.SAMPLE_RATE
     h = design.fir(fs)
     sos = design.iir(fs)
     run = boardlog.read(args.log)

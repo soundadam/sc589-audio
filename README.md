@@ -18,14 +18,12 @@ macOS 上不能编译；调试器 ICE 的驱动也没有 Mac 版。我手边只�
 
 ## 目录
 
-自己的代码：
-
 | 目录 | 内容 |
 |---|---|
-| `firmware/audio_loopback/` | ADC → 处理 → DAC 回环程序：`adc_dac_playback.c` 是入口 |
+| `firmware/audio_loopback/` | ADC → 处理 → DAC 回环程序，入口 `adc_dac_playback.c` 不在仓库里（见下一节） |
 | `firmware/audio_loopback/dsp/` | 信号处理，纯 C99，不依赖 CCES 和板卡：`audio_process.c` 按声道调用 `fir.c`、`biquad.c`；`lowpass_coeffs.*` 由 `coursework/E01-fir-iir/design.py` 生成 |
 | `firmware/audio_loopback/dsp/test/` | `dsp/` 的主机端测试 |
-| `firmware/audio_loopback/platform/` | 板卡、codec、SPORT/DMA 音频通路和串口控制台；`filter_report.c` 在启动时把滤波器的冲激响应和周期数打到控制台 |
+| `firmware/audio_loopback/platform/` | 串口控制台（`uart_console.c`）；`filter_report.c` 在启动时把滤波器的冲激响应和周期数打到控制台 |
 | `firmware/audio_loopback/cces/SC589/sharc/` | 三个核的 CCES 工程，源码通过链接引用 `firmware/audio_loopback/` 下的文件 |
 | `host/board/` | Mac 端的 UART 启动和日志工具（`uart_boot.py`、`uart_log.py`）及其测试 |
 | `host/dsplab/` | Mac 端的滤波器设计与分析包（系数生成 C 表、频响、读板卡日志、作图），由根目录 `pyproject.toml` 用 uv 管理 |
@@ -33,12 +31,18 @@ macOS 上不能编译；调试器 ICE 的驱动也没有 Mac 版。我手边只�
 | `coursework/` | 课程实验：每次一个目录（要求清单、设计脚本、作图脚本、报告源文件），`common/` 放报告的共用样式 |
 | `docs/adr/` | 架构决策记录 |
 
-ADI 官方代码，只读参考：
+## 不在仓库里的 ADI 代码
 
-| 目录 | 内容 |
-|---|---|
-| `vendor/adi/examples/` | 导入的 CCES 示例（`drivers/` `services/` `Device_Programmer/` `Power_On_Self_Test/`），与初始导入的提交（`1721959`）内容一致 |
-| `vendor/adi/sources/` | 示例链接的驱动源码，见 [vendor/adi/sources/README.md](vendor/adi/sources/README.md) |
+回环程序是从 ADI 的 ADAU1979 示例（`drivers/adc/adau1979` 下的 `adc_dac_playback`）改出来的。这部分文件带着 ADI「proprietary and confidential」的版权声明，不能公开，所以不在这个仓库里：
+
+- `firmware/audio_loopback/adc_dac_playback.{c,h}`：入口、ping-pong 缓冲和回调
+- `firmware/audio_loopback/platform/` 下的 `board_setup`、`adau1979_setup`、`adau1962a_setup`、`audio_path`：
+  板卡、两颗 codec 和 SPORT/DMA 音频通路
+- `firmware/audio_loopback/cces/SC589/` 下的 `SoftConfig_SC589.c`，以及 CCES 生成的 `system.svc` 和 `system/adi_initialize.*`
+
+我自己构建时，它们放在另一个私有仓库里，`host/build/remote_build.sh` 在发给 Windows 之前按原路径叠加进去。
+所以直接 clone 这个仓库是编译不出固件的；如果你手上也有这块板，可以从自己的 CCES / BSP 安装里拿到原始示例，
+`dsp/`、`host/` 和 `coursework/` 则不依赖这些文件，在 Mac 上就能跑。
 
 ## 本地检查
 

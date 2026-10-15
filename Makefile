@@ -6,6 +6,9 @@
 check:
 	$(MAKE) -C firmware/audio_loopback/dsp/test test
 	python3 -m unittest discover -s host/board
+	@# ADI-licensed files belong in sc589-adi (.claude/rules/vendor.md)
+	@if git grep -l -E 'Analog Devices,? Inc\.?,? All Rights Reserved' -- ':!.claude'; then \
+		echo 'ADI-licensed files above must not be committed here' >&2; exit 1; fi
 
 # Build on the Windows host (host/build/remote_build.sh), then boot the board over
 # UART and exit on its console verdict (host/board/uart_boot.py). Press reset when
@@ -19,10 +22,15 @@ board:
 		--log build/board.log
 
 # E01 report: figures and numbers from the design and build/board.log (make board),
-# then XeLaTeX. Output in build/E01/report.pdf.
+# then XeLaTeX. Output in build/E01/report.pdf. The byline is REPORT_AUTHOR from
+# the untracked .env (or the environment when .env does not set it), so a name and
+# student number stay out of the repository.
+-include .env
+REPORT_AUTHOR ?= soundadam
 .PHONY: e01
 
 e01:
 	uv run coursework/E01-fir-iir/figures.py
+	printf '%s\n' '\newcommand{\ReportAuthor}{$(REPORT_AUTHOR)}' > build/E01/author.tex
 	cd coursework/E01-fir-iir && TEXINPUTS=../common//: latexmk -xelatex -interaction=nonstopmode -halt-on-error \
 		-outdir=$(CURDIR)/build/E01 report.tex
