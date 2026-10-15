@@ -9,7 +9,7 @@
 | 文件 | 内容 |
 |---|---|
 | `design.py` | 设计两组系数，生成 `firmware/audio_loopback/dsp/lowpass_coeffs.{c,h}` |
-| `figures.py` | 由设计和 `build/board.log` 作图，并把报告引用的数字写成 `build/E01/results.tex` |
+| `figures.py` | 由设计和 `build/E01/board.log` 作图，并把报告引用的数字写成 `build/E01/results.tex` |
 | `report.tex` | 报告正文，样式在 `../common/labreport.sty` |
 
 ## 生成报告
@@ -22,9 +22,9 @@ make board
 make e01
 ```
 
-`make board` 让板卡打印冲激响应和周期数到 `build/board.log`；`make e01` 作图并编译出 `build/E01/report.pdf`。
+板上数据来自 tag `e01` 处的固件：在那个提交上 `make board`，把板卡打出的冲激响应和周期数（控制台日志）放到 `build/E01/board.log`；`make e01` 作图并编译出 `build/E01/report.pdf`。
 署名取 `REPORT_AUTHOR`，默认 `soundadam`；姓名学号写在仓库根目录不入库的 `.env` 里，例如 `REPORT_AUTHOR = 姓名\quad 学号`。
-改了 `design.py` 之后先运行 `uv run coursework/E01-fir-iir/design.py` 重新生成系数，再 `make board`。
+改了 `design.py` 之后先运行 `uv run coursework/E01-fir-iir/design.py` 重新生成系数，再按上面的方式在 tag `e01` 的固件上 `make board`。
 
 ## 要求
 

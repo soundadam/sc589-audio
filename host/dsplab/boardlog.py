@@ -1,7 +1,7 @@
 """Read the filter measurements the firmware prints on the UART console.
 
 The line format is defined in firmware/audio_loopback/platform/filter_report.h;
-a console log saved by `make board` (build/board.log) holds them among the
+a console log saved by `make board` (build/<experiment>/board.log) holds them among the
 other console lines, which are skipped.
 """
 

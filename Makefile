@@ -12,14 +12,19 @@ check:
 
 # Build on the Windows host (host/build/remote_build.sh), then boot the board over
 # UART and exit on its console verdict (host/board/uart_boot.py). Press reset when
-# uart_boot.py starts waiting. The console lines are kept in build/board.log.
+# uart_boot.py starts waiting. The console lines are kept in
+# build/$(EXPERIMENT)/board.log, next to the report that reads them.
 .PHONY: board
+
+# The experiment whose processing the firmware in this tree runs
+EXPERIMENT = E02
 
 board:
 	host/build/remote_build.sh
+	mkdir -p build/$(EXPERIMENT)
 	uv run --no-project --with-requirements host/board/requirements.txt \
 		python host/board/uart_boot.py build/adc_dac_playback_SC589_uartslave.ldr --wait 60 \
-		--log build/board.log
+		--log build/$(EXPERIMENT)/board.log
 
 # Lab reports: each experiment's figures.py writes its figures and numbers into
 # build/<E0n>/, then XeLaTeX builds build/<E0n>/report.pdf. The byline is
@@ -36,12 +41,14 @@ define report
 		-outdir=$(CURDIR)/build/$(1) report.tex
 endef
 
-# E01 reads the impulse responses and cycle counts in build/board.log (make board)
+# E01 reads the impulse responses and cycle counts in build/E01/board.log, from
+# make board on the firmware at tag e01
 .PHONY: e01 e02
 
 e01:
 	$(call report,E01,E01-fir-iir)
 
-# E02 runs the dsp/ sources on the Mac (host/dsplab/cdsp.py)
+# E02 runs the dsp/ sources on the Mac (host/dsplab/cdsp.py) and adds the board's
+# numbers when build/E02/board.log is there
 e02:
 	$(call report,E02,E02-multirate)

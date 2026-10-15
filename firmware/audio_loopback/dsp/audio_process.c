@@ -9,16 +9,19 @@
  *            needed before the conversion.
  *
  *            Each channel of a block is de-interleaved into a contiguous
- *            float array, filtered, then converted back and re-interleaved.
- *            Even channels run the low-pass FIR, odd channels the low-pass
- *            IIR (lowpass_coeffs.h), so a stereo pair carries one of each
- *            for the same input.
+ *            float array, processed, then converted back and re-interleaved.
+ *            The processing runs at the low rate between a decimator and an
+ *            interpolator (multirate.h, multirate_coeffs.h): even channels
+ *            decimate their input and low-pass it with the IIR, odd channels
+ *            replace it with the test tone. A stereo pair thus carries the
+ *            filtered input on one side and the tone on the other.
  */
 
 #include "audio_process.h"
-#include "fir.h"
 #include "biquad.h"
-#include "lowpass_coeffs.h"
+#include "multirate.h"
+#include "multirate_coeffs.h"
+#include "tone.h"
 
 /* Full scale of a 24-bit sample: 1.0f maps to 2^23 */
 #define S24_SCALE       (8388608.0f)
@@ -27,18 +30,26 @@
 #define S24_MAX         (8388607.0f)
 #define S24_MIN         (-8388608.0f)
 
-/* Even channels take the FIR, odd channels the IIR */
-#define FIR_CHANNELS    ((AUDIO_PROCESS_MAX_CHANNELS + 1u) / 2u)
-#define IIR_CHANNELS    (AUDIO_PROCESS_MAX_CHANNELS / 2u)
+/* Even channels take the IIR, odd channels the tone */
+#define IIR_CHANNELS    ((AUDIO_PROCESS_MAX_CHANNELS + 1u) / 2u)
+#define TONE_CHANNELS   (AUDIO_PROCESS_MAX_CHANNELS / 2u)
+/* Low-rate samples in one chunk, at most */
+#define LOW_FRAMES      MULTIRATE_LOW_FRAMES(AUDIO_PROCESS_MAX_FRAMES, MULTIRATE_FACTOR)
 
-static float FirDelay[FIR_CHANNELS][LOWPASS_FIR_TAPS];
-static FirFilter Fir[FIR_CHANNELS];
+static float DecDelay[IIR_CHANNELS][MULTIRATE_TAPS];
+static Decimator Dec[IIR_CHANNELS];
 
-static float IirState[IIR_CHANNELS][LOWPASS_IIR_SECTIONS * BIQUAD_STATES];
+static float IirState[IIR_CHANNELS][RATE8K_IIR_SECTIONS * BIQUAD_STATES];
 static BiquadCascade Iir[IIR_CHANNELS];
 
-/* One channel of the current chunk, before and after filtering */
+static Tone Tones[TONE_CHANNELS];
+
+static float IntDelay[AUDIO_PROCESS_MAX_CHANNELS][MULTIRATE_TAPS / MULTIRATE_FACTOR];
+static Interpolator Int[AUDIO_PROCESS_MAX_CHANNELS];
+
+/* One channel of the current chunk: input, the low-rate stream, output */
 static float ChannelIn[AUDIO_PROCESS_MAX_FRAMES];
+static float ChannelLow[LOW_FRAMES];
 static float ChannelOut[AUDIO_PROCESS_MAX_FRAMES];
 
 /*
@@ -85,13 +96,18 @@ void AudioProcessInit(void)
 {
 	uint32_t nIndex;
 
-	for (nIndex = 0u; nIndex < FIR_CHANNELS; nIndex++)
-	{
-		FirInit(&Fir[nIndex], LowpassFirCoeffs, FirDelay[nIndex], LOWPASS_FIR_TAPS);
-	}
 	for (nIndex = 0u; nIndex < IIR_CHANNELS; nIndex++)
 	{
-		BiquadInit(&Iir[nIndex], LowpassIirSos, IirState[nIndex], LOWPASS_IIR_SECTIONS);
+		DecimatorInit(&Dec[nIndex], MultirateTaps, DecDelay[nIndex], MULTIRATE_TAPS, MULTIRATE_FACTOR);
+		BiquadInit(&Iir[nIndex], Rate8kIirSos, IirState[nIndex], RATE8K_IIR_SECTIONS);
+	}
+	for (nIndex = 0u; nIndex < TONE_CHANNELS; nIndex++)
+	{
+		ToneInit(&Tones[nIndex], Rate8kTone, RATE8K_TONE_LEN);
+	}
+	for (nIndex = 0u; nIndex < AUDIO_PROCESS_MAX_CHANNELS; nIndex++)
+	{
+		InterpolatorInit(&Int[nIndex], MultirateTaps, IntDelay[nIndex], MULTIRATE_TAPS, MULTIRATE_FACTOR);
 	}
 }
 
@@ -116,6 +132,7 @@ void AudioProcess(const int32_t *pIn, int32_t *pOut,
 	uint32_t nFrame;
 	uint32_t nChannel;
 	uint32_t nIndex;
+	uint32_t nLow;
 
 	/* blocks longer than the work buffers are taken a chunk at a time */
 	for (nDone = 0u; nDone < nFrames; nDone += nChunk)
@@ -139,20 +156,25 @@ void AudioProcess(const int32_t *pIn, int32_t *pOut,
 				continue;
 			}
 
-			/* de-interleave and convert */
-			for (nFrame = 0u; nFrame < nChunk; nFrame++)
-			{
-				ChannelIn[nFrame] = S24ToFloat(pIn[((nDone + nFrame) * nChannels) + nChannel]);
-			}
-
 			if ((nChannel % 2u) == 0u)
 			{
-				FirProcess(&Fir[nChannel / 2u], ChannelIn, ChannelOut, nChunk);
+				/* de-interleave and convert, then down to the low rate and filter */
+				for (nFrame = 0u; nFrame < nChunk; nFrame++)
+				{
+					ChannelIn[nFrame] = S24ToFloat(pIn[((nDone + nFrame) * nChannels) + nChannel]);
+				}
+				nLow = DecimatorProcess(&Dec[nChannel / 2u], ChannelIn, nChunk, ChannelLow);
+				BiquadProcess(&Iir[nChannel / 2u], ChannelLow, ChannelLow, nLow);
 			}
 			else
 			{
-				BiquadProcess(&Iir[nChannel / 2u], ChannelIn, ChannelOut, nChunk);
+				/* the input is not used: the tone takes its place */
+				nLow = InterpolatorInputs(&Int[nChannel], nChunk);
+				ToneProcess(&Tones[nChannel / 2u], ChannelLow, nLow);
 			}
+
+			/* the phases line up, so the interpolator takes exactly the nLow samples */
+			(void)InterpolatorProcess(&Int[nChannel], ChannelLow, ChannelOut, nChunk);
 
 			/* convert back and re-interleave */
 			for (nFrame = 0u; nFrame < nChunk; nFrame++)

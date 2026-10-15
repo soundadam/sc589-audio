@@ -21,7 +21,7 @@ macOS 上不能编译；调试器 ICE 的驱动也没有 Mac 版。我手边只�
 | 目录 | 内容 |
 |---|---|
 | `firmware/audio_loopback/` | ADC → 处理 → DAC 回环程序，入口 `adc_dac_playback.c` 不在仓库里（见下一节） |
-| `firmware/audio_loopback/dsp/` | 信号处理，纯 C99，不依赖 CCES 和板卡：`audio_process.c` 按声道调用 `fir.c`、`biquad.c`；`lowpass_coeffs.*` 由 `coursework/E01-fir-iir/design.py` 生成 |
+| `firmware/audio_loopback/dsp/` | 信号处理，纯 C99，不依赖 CCES 和板卡：`audio_process.c` 按声道调用 `multirate.c`（降采样、升采样）、`biquad.c`、`tone.c`；`multirate_coeffs.*` 由 `coursework/E02-multirate/design.py` 生成，`lowpass_coeffs.*`（E01，`fir.c` 的测试也用它）由 `coursework/E01-fir-iir/design.py` 生成 |
 | `firmware/audio_loopback/dsp/test/` | `dsp/` 的主机端测试 |
 | `firmware/audio_loopback/platform/` | 串口控制台（`uart_console.c`）；`filter_report.c` 在启动时把滤波器的冲激响应和周期数打到控制台 |
 | `firmware/audio_loopback/cces/SC589/sharc/` | 三个核的 CCES 工程，源码通过链接引用 `firmware/audio_loopback/` 下的文件 |
@@ -61,7 +61,7 @@ make board
 ```
 
 在 Windows 主机上用当前工作树（含未提交的改动）构建，取回 `.ldr` 到 `build/`，通过 UART 启动板卡，
-按串口输出判定通过或失败，控制台输出存进 `build/board.log`。看到 `uart_boot.py` 开始等待时按复位。只构建不上板用 `host/build/remote_build.sh`。
+按串口输出判定通过或失败，控制台输出存进 `build/<实验>/board.log`（实验由 Makefile 的 `EXPERIMENT` 指定）。看到 `uart_boot.py` 开始等待时按复位。只构建不上板用 `host/build/remote_build.sh`。
 其余启动方式见 [ADR 0001](docs/adr/0001-mac-board-testing-via-uart-boot.md) 的「验证步骤」。
 
 ## 许可
