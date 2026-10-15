@@ -60,12 +60,13 @@ make check
 make board
 ```
 
-在 Windows 主机上构建当前实验的固件，取回 `.ldr`，通过 UART 启动板卡，按串口输出判定通过或失败，
-控制台输出存进 `build/<实验>/board.log`。看到 `uart_boot.py` 开始等待时按复位。
-实验由 `EXPERIMENT` 指定（默认 E02，用当前工作树，含未提交的改动）；`make board EXPERIMENT=E01` 构建 tag `e01` 上的固件。
+先列出 `coursework/` 下的实验让你选（直接回车选最新的一个），然后在 Windows 主机上构建它的固件，取回 `.ldr`，
+通过 UART 启动板卡，按串口输出判定通过或失败，控制台输出存进 `build/<实验>/board.log`。看到 `uart_boot.py` 开始等待时按复位。
+有 tag（如 `e01`）的实验构建 tag 上的固件，其余用当前工作树（含未提交的改动）；不想被问时写 `make board EXPERIMENT=E01`。
 
 构建过的固件按 `firmware/` 与 `host/build/` 的内容缓存在 `build/ldr/`，这两处没变就直接取缓存，不连 Windows 主机。
-`.ldr` 同时留在 `build/<实验>/`，之后只想启动、不构建，用 `make boot EXPERIMENT=E01`。
+`.ldr` 同时留在 `build/<实验>/`，之后只想启动、不构建，用 `make boot`（同样会问，或带 `EXPERIMENT=`）。
+新增一个实验只需建 `coursework/E<nn>-<名字>/` 目录，菜单里就有它。
 只构建不上板用 `host/build/remote_build.sh`（可带一个 commit，如 `e01`）。
 其余启动方式见 [ADR 0001](docs/adr/0001-mac-board-testing-via-uart-boot.md) 的「验证步骤」。
 
