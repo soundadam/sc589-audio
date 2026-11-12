@@ -5,7 +5,8 @@
  *            The sources are included directly rather than linked, so the
  *            tests can see the static conversion helpers in audio_process.c.
  *            Expected values come from the same coefficient tables the
- *            firmware uses, recomputed here in double precision. Builds with
+ *            firmware uses, recomputed here in double precision; the FFTs are
+ *            checked against the DFT sums written out directly. Builds with
  *            any C99 compiler; see Makefile.
  */
 
@@ -15,6 +16,8 @@
 #include <string.h>
 
 #include "../audio_process.c"
+#include "../fft.c"
+#include "../fft_tables.c"
 #include "../fir.c"
 #include "../biquad.c"
 #include "../multirate.c"
@@ -26,35 +29,35 @@
 #define M_PI            (3.14159265358979323846)
 #endif
 
-#define FS              ((double)MULTIRATE_SAMPLE_RATE)
-#define LOW_FS          (FS / MULTIRATE_FACTOR)
 #define TEST_CHANNELS   (4u)
 #define BLOCK_FRAMES    (64u)
-/* Blocks run through the filters per tone: one second of audio */
-#define TONE_BLOCKS     (750u)
-#define TONE_FRAMES     (TONE_BLOCKS * BLOCK_FRAMES)
-/* Frames left out of the gain measurement while the IIR settles */
-#define TONE_SETTLE     (TONE_FRAMES / 4u)
-/* Tone amplitude, as a fraction of full scale */
-#define TONE_LEVEL      (0.5)
-/* Allowed difference between measured and computed gain */
-#define GAIN_TOL_DB     (0.05)
-/*
- * The same below -60 dB, where float rounding in the prototype's long sums
- * starts to show, and the level under which only an upper bound is checked
- */
-#define STOP_TOL_DB     (0.5)
-#define FLOOR_DB        (-110.0)
+/* Frames per channel in the AudioProcess() streams */
+#define STREAM_FRAMES   (64u * BLOCK_FRAMES)
 /* Allowed difference between a float filter and its double reference */
 #define FILTER_TOL      (1e-5)
+/*
+ * Allowed difference between a float transform and the double DFT, for
+ * inputs within [-1, 1): bins grow to N, and each of log2 N stages adds a
+ * rounding of about 2^-24 of that
+ */
+#define FFT_TOL         (1e-5)
+/*
+ * The same for a forward and inverse transform in turn, whose output is back
+ * within [-1, 1): 2 log2 N roundings of up to 2^-24 each, about 6e-7
+ */
+#define ROUND_TRIP_TOL  (1e-6)
+/* ROUND_TRIP_TOL in 24-bit LSB (2^-23 each), plus the output rounding */
+#define ROUND_TRIP_LSB  (9)
 /* Samples per filter in the float-versus-double comparisons */
 #define REF_FRAMES      (4096u)
 /* An awkward block size, to split streams off the 64-frame grid */
 #define ODD_BLOCK       (7u)
+/* Random frames per transform test */
+#define FFT_TRIALS      (200u)
 
-static int32_t In[TONE_FRAMES * TEST_CHANNELS];
-static int32_t Out[TONE_FRAMES * TEST_CHANNELS];
-static int32_t Ref[TONE_FRAMES * TEST_CHANNELS];
+static int32_t In[STREAM_FRAMES * TEST_CHANNELS];
+static int32_t Out[STREAM_FRAMES * TEST_CHANNELS];
+static int32_t Ref[STREAM_FRAMES * TEST_CHANNELS];
 
 static float SigIn[REF_FRAMES];
 static float SigOut[REF_FRAMES];
@@ -99,6 +102,44 @@ static double MaxAbsDiff(const float *pA, const float *pB, uint32_t nFrames)
 		fMax = (fDiff > fMax) ? fDiff : fMax;
 	}
 	return fMax;
+}
+
+/* Uniform in [-1, 1), from the same rand() stream as Noise() */
+static float Uniform(void)
+{
+	return 2.0f * ((float)rand() / ((float)RAND_MAX + 1.0f)) - 1.0f;
+}
+
+/*
+ * X[k] = sum_n x[n] e^{-+j 2 pi n k / N} in double precision, for every k;
+ * the inverse also divides by N. pRe/pIm in, pOutRe/pOutIm out.
+ */
+static void Dft(const double *pRe, const double *pIm, double *pOutRe, double *pOutIm, int bInverse)
+{
+	double fSign = bInverse ? 1.0 : -1.0;
+	double fScale = bInverse ? (1.0 / FFT_N) : 1.0;
+	uint32_t k;
+	uint32_t n;
+
+	for (k = 0u; k < FFT_N; k++)
+	{
+		double fRe = 0.0;
+		double fIm = 0.0;
+
+		for (n = 0u; n < FFT_N; n++)
+		{
+			double fArg = fSign * 2.0 * M_PI * (double)((n * k) % FFT_N) / FFT_N;
+			fRe += (pRe[n] * cos(fArg)) - (pIm[n] * sin(fArg));
+			fIm += (pRe[n] * sin(fArg)) + (pIm[n] * cos(fArg));
+		}
+		pOutRe[k] = fRe * fScale;
+		pOutIm[k] = fIm * fScale;
+	}
+}
+
+static double CplxErr(Cplx z, double fRe, double fIm)
+{
+	return hypot((double)z.re - fRe, (double)z.im - fIm);
 }
 
 static void TestConversions(void)
@@ -258,114 +299,18 @@ static void TestBlockBoundary(void)
 
 	CHECK(memcmp(Ref, Out, nFrames * TEST_CHANNELS * sizeof(int32_t)) == 0,
 	      "output depends on how the stream is split into blocks");
-}
 
-/*
- * Gain in dB at fHz of an FIR h[0] .. h[nTaps-1] running at fFs.
- */
-static double FirGainDb(const float *pH, uint32_t nTaps, double fHz, double fFs)
-{
-	double fW = 2.0 * M_PI * fHz / fFs;
-	double fRe = 0.0;
-	double fIm = 0.0;
-	uint32_t nTap;
-
-	for (nTap = 0u; nTap < nTaps; nTap++)
-	{
-		fRe += pH[nTap] * cos(fW * nTap);
-		fIm -= pH[nTap] * sin(fW * nTap);
-	}
-	return 20.0 * log10(sqrt((fRe * fRe) + (fIm * fIm)));
-}
-
-/*
- * Gain in dB at fHz of a cascade of nSections biquad.h sections running at fFs.
- */
-static double SosGainDb(const float *pSos, uint32_t nSections, double fHz, double fFs)
-{
-	double fW = 2.0 * M_PI * fHz / fFs;
-	double fGain = 1.0;
-	uint32_t nSection;
-
-	for (nSection = 0u; nSection < nSections; nSection++)
-	{
-		const float *pC = &pSos[nSection * BIQUAD_COEFFS];
-		/* numerator and denominator at z = e^{jw} */
-		double fNumRe = pC[0] + (pC[1] * cos(fW)) + (pC[2] * cos(2.0 * fW));
-		double fNumIm = -(pC[1] * sin(fW)) - (pC[2] * sin(2.0 * fW));
-		double fDenRe = 1.0 + (pC[3] * cos(fW)) + (pC[4] * cos(2.0 * fW));
-		double fDenIm = -(pC[3] * sin(fW)) - (pC[4] * sin(2.0 * fW));
-		fGain *= sqrt(((fNumRe * fNumRe) + (fNumIm * fNumIm)) /
-		              ((fDenRe * fDenRe) + (fDenIm * fDenIm)));
-	}
-	return 20.0 * log10(fGain);
-}
-
-/*
- * Where a tone at fHz lands once sampled at the low rate: folded into
- * [0, LOW_FS / 2].
- */
-static double AliasHz(double fHz)
-{
-	double fFolded = fmod(fHz, LOW_FS);
-
-	return (fFolded > (LOW_FS / 2.0)) ? (LOW_FS - fFolded) : fFolded;
-}
-
-/*
- * Gain of an even channel from a tone at fHz in to its alias out, computed
- * from the coefficient tables: decimator at fHz, IIR and interpolator at the
- * alias. The interpolator's gain of M makes up for the zeros it inserts.
- */
-static double ComputedChainGainDb(double fHz)
-{
-	double fAlias = AliasHz(fHz);
-
-	return FirGainDb(MultirateTaps, MULTIRATE_TAPS, fHz, FS)
-	     + SosGainDb(Rate8kIirSos, RATE8K_IIR_SECTIONS, fAlias, LOW_FS)
-	     + FirGainDb(MultirateTaps, MULTIRATE_TAPS, fAlias, FS);
-}
-
-/*
- * Runs a stream in 64-frame blocks, as audio_path.c does, with a tone on
- * channel 0 and silence elsewhere.
- */
-static void RunTone(double fHz)
-{
-	uint32_t nFrame;
-	uint32_t nBlock;
-
+	/* in place, pOut == pIn, as platform/filter_report.c calls it */
+	memcpy(Out, In, nFrames * TEST_CHANNELS * sizeof(int32_t));
 	AudioProcessInit();
-	memset(In, 0, sizeof(In));
-
-	for (nFrame = 0u; nFrame < TONE_FRAMES; nFrame++)
+	for (nDone = 0u; nDone < nFrames; nDone += BLOCK_FRAMES)
 	{
-		In[nFrame * TEST_CHANNELS] = FloatToS24((float)(TONE_LEVEL * sin(2.0 * M_PI * fHz * nFrame / FS)));
-	}
-
-	for (nBlock = 0u; nBlock < TONE_BLOCKS; nBlock++)
-	{
-		AudioProcess(&In[nBlock * BLOCK_FRAMES * TEST_CHANNELS],
-		             &Out[nBlock * BLOCK_FRAMES * TEST_CHANNELS],
+		AudioProcess(&Out[nDone * TEST_CHANNELS], &Out[nDone * TEST_CHANNELS],
 		             BLOCK_FRAMES, TEST_CHANNELS);
 	}
-}
 
-/*
- * Power of channel nChannel of Out once the filters have settled, in squared
- * full-scale units.
- */
-static double SettledPower(const int32_t *pFrames, uint32_t nChannel)
-{
-	double fSum = 0.0;
-	uint32_t nFrame;
-
-	for (nFrame = TONE_SETTLE; nFrame < TONE_FRAMES; nFrame++)
-	{
-		double fX = (double)pFrames[(nFrame * TEST_CHANNELS) + nChannel] / S24_SCALE;
-		fSum += fX * fX;
-	}
-	return fSum / (TONE_FRAMES - TONE_SETTLE);
+	CHECK(memcmp(Ref, Out, nFrames * TEST_CHANNELS * sizeof(int32_t)) == 0,
+	      "output differs when processed in place");
 }
 
 static void TestDecimator(void)
@@ -449,190 +394,295 @@ static void TestInterpolator(void)
 }
 
 /*
- * An impulse on an even channel comes out of that channel only, shaped by
- * decimator, IIR and interpolator in turn; odd channels carry the tone
- * whatever their input; channels past the maximum pass straight through.
- * The expected outputs are the units run on their own.
+ * The tables: twiddles on the unit circle at the right angles, and the
+ * bit-reversal tables permutations that undo themselves.
  */
-static void TestChannels(void)
+static void TestFftTables(void)
 {
-	const uint32_t nChannels = AUDIO_PROCESS_MAX_CHANNELS + 2u;
-	const uint32_t nFrames = 4u * BLOCK_FRAMES;
-	const float fAmp = 0.5f;
-	float DecState[MULTIRATE_TAPS];
-	float IirState[RATE8K_IIR_SECTIONS * BIQUAD_STATES];
-	float IntState[MULTIRATE_TAPS / MULTIRATE_FACTOR];
-	Decimator Dec;
-	BiquadCascade Iir;
-	Interpolator Int;
-	Tone Gen;
-	uint32_t nLow;
-	uint32_t nDriven;
-	uint32_t nChannel;
-	uint32_t nFrame;
-	uint32_t nBad;
+	uint32_t n;
+	uint32_t nBad = 0u;
 
-	printf("channels\n");
+	printf("fft tables\n");
 
-	/* SigRef: the even-channel chain's response to the impulse */
-	memset(SigIn, 0, sizeof(SigIn));
-	SigIn[0] = fAmp;
-	DecimatorInit(&Dec, MultirateTaps, DecState, MULTIRATE_TAPS, MULTIRATE_FACTOR);
-	BiquadInit(&Iir, Rate8kIirSos, IirState, RATE8K_IIR_SECTIONS);
-	InterpolatorInit(&Int, MultirateTaps, IntState, MULTIRATE_TAPS, MULTIRATE_FACTOR);
-	nLow = DecimatorProcess(&Dec, SigIn, nFrames, SigOut);
-	BiquadProcess(&Iir, SigOut, SigOut, nLow);
-	(void)InterpolatorProcess(&Int, SigOut, SigRef, nFrames);
-
-	/* SigOut: the tone through the interpolator */
-	ToneInit(&Gen, Rate8kTone, RATE8K_TONE_LEN);
-	InterpolatorInit(&Int, MultirateTaps, IntState, MULTIRATE_TAPS, MULTIRATE_FACTOR);
-	nLow = InterpolatorInputs(&Int, nFrames);
-	ToneProcess(&Gen, SigIn, nLow);
-	(void)InterpolatorProcess(&Int, SigIn, SigOut, nFrames);
-
-	for (nDriven = 0u; nDriven < AUDIO_PROCESS_MAX_CHANNELS; nDriven++)
+	for (n = 0u; n < FFT_N / 2u; n++)
 	{
-		AudioProcessInit();
-		memset(In, 0, sizeof(In));
-		In[nDriven] = FloatToS24(fAmp);
-		for (nFrame = 0u; nFrame < nFrames; nFrame++)
-		{
-			for (nChannel = AUDIO_PROCESS_MAX_CHANNELS; nChannel < nChannels; nChannel++)
-			{
-				In[(nFrame * nChannels) + nChannel] = (int32_t)((nFrame + 1u) * 1000u * nChannel);
-			}
-		}
-		for (nFrame = 0u; nFrame < nFrames; nFrame += BLOCK_FRAMES)
-		{
-			AudioProcess(&In[nFrame * nChannels], &Out[nFrame * nChannels], BLOCK_FRAMES, nChannels);
-		}
-
-		for (nChannel = 0u; nChannel < nChannels; nChannel++)
-		{
-			nBad = 0u;
-			for (nFrame = 0u; nFrame < nFrames; nFrame++)
-			{
-				int32_t nExpect;
-
-				if (nChannel >= AUDIO_PROCESS_MAX_CHANNELS)
-				{
-					nExpect = In[(nFrame * nChannels) + nChannel];
-				}
-				else if ((nChannel % 2u) == 1u)
-				{
-					nExpect = FloatToS24(SigOut[nFrame]);
-				}
-				else
-				{
-					nExpect = (nChannel == nDriven) ? FloatToS24(SigRef[nFrame]) : 0;
-				}
-				nBad += (Out[(nFrame * nChannels) + nChannel] != nExpect) ? 1u : 0u;
-			}
-			CHECK(nBad == 0u, "impulse on %u: %u frames of channel %u differ", nDriven, nBad, nChannel);
-		}
+		double fArg = 2.0 * M_PI * n / FFT_N;
+		CHECK(fabs(FftCos[n] - cos(fArg)) < 1e-7 && fabs(FftSin[n] - sin(fArg)) < 1e-7,
+		      "W^%u = %g - j %g", n, FftCos[n], FftSin[n]);
 	}
+	for (n = 0u; n < FFT_N; n++)
+	{
+		nBad += (FftBitRev[FftBitRev[n]] != n) ? 1u : 0u;
+	}
+	for (n = 0u; n < FFT_N / 2u; n++)
+	{
+		nBad += (FftBitRevHalf[FftBitRevHalf[n]] != n) ? 1u : 0u;
+	}
+	CHECK(nBad == 0u, "%u bit-reversal entries do not undo themselves", nBad);
+	CHECK(FftBitRev[1] == FFT_N / 2u, "FftBitRev[1] = %u", FftBitRev[1]);
 }
 
-static void TestFrequencyResponse(void)
+/*
+ * The complex transforms against the DFT, and the inverse undoing the
+ * forward, on random frames.
+ */
+static void TestFftComplex(void)
 {
-	/* the pass band and transition, then tones that alias at the low rate */
-	static const double Freqs[] = { 500.0, 1000.0, 1500.0, 2000.0, 2500.0, 3000.0, 3500.0,
-	                                5000.0, 7000.0, 9000.0, 13000.0, 19000.0 };
-	uint32_t nPoint;
+	Cplx x[FFT_N];
+	Cplx X[FFT_N];
+	Cplx y[FFT_N];
+	double fRe[FFT_N];
+	double fIm[FFT_N];
+	double fDftRe[FFT_N];
+	double fDftIm[FFT_N];
+	double fFwdErr = 0.0;
+	double fInvErr = 0.0;
+	double fRoundErr = 0.0;
+	uint32_t nTrial;
+	uint32_t n;
 
-	printf("frequency response, tone in on channel 0, its alias out\n");
-	printf("  %8s %8s %12s %12s\n", "Hz", "alias", "measured dB", "computed dB");
+	printf("complex fft and ifft against the dft\n");
 
-	for (nPoint = 0u; nPoint < (sizeof(Freqs) / sizeof(Freqs[0])); nPoint++)
+	srand(2u);
+	for (nTrial = 0u; nTrial < FFT_TRIALS; nTrial++)
 	{
-		double fComputed = ComputedChainGainDb(Freqs[nPoint]);
-		double fMeasured;
-
-		RunTone(Freqs[nPoint]);
-		fMeasured = 10.0 * log10(SettledPower(Out, 0u) / SettledPower(In, 0u));
-
-		printf("  %8.0f %8.0f %12.2f %12.2f\n", Freqs[nPoint], AliasHz(Freqs[nPoint]), fMeasured, fComputed);
-
-		if (fComputed > -60.0)
+		for (n = 0u; n < FFT_N; n++)
 		{
-			CHECK(fabs(fMeasured - fComputed) < GAIN_TOL_DB,
-			      "%.0f Hz: measured %.3f dB, computed %.3f dB", Freqs[nPoint], fMeasured, fComputed);
+			x[n] = CplxMake(Uniform(), Uniform());
+			fRe[n] = x[n].re;
+			fIm[n] = x[n].im;
 		}
-		else if (fComputed > FLOOR_DB)
+		FftForward(x, X);
+		Dft(fRe, fIm, fDftRe, fDftIm, 0);
+		for (n = 0u; n < FFT_N; n++)
 		{
-			CHECK(fabs(fMeasured - fComputed) < STOP_TOL_DB,
-			      "%.0f Hz: measured %.3f dB, computed %.3f dB", Freqs[nPoint], fMeasured, fComputed);
+			fFwdErr = fmax(fFwdErr, CplxErr(X[n], fDftRe[n], fDftIm[n]));
 		}
-		else
+
+		/* the inverse of the float spectrum, and of the exact one */
+		FftInverse(X, y);
+		for (n = 0u; n < FFT_N; n++)
 		{
-			CHECK(fMeasured < FLOOR_DB + STOP_TOL_DB,
-			      "%.0f Hz: measured %.3f dB, computed %.3f dB", Freqs[nPoint], fMeasured, fComputed);
+			fRoundErr = fmax(fRoundErr, CplxErr(y[n], fRe[n], fIm[n]));
+			fRe[n] = X[n].re;
+			fIm[n] = X[n].im;
 		}
+		Dft(fRe, fIm, fDftRe, fDftIm, 1);
+		for (n = 0u; n < FFT_N; n++)
+		{
+			fInvErr = fmax(fInvErr, CplxErr(y[n], fDftRe[n], fDftIm[n]));
+		}
+	}
+
+	printf("  max error: fft %.2e, ifft %.2e, ifft(fft(x)) - x %.2e\n", fFwdErr, fInvErr, fRoundErr);
+	CHECK(fFwdErr < FFT_TOL, "fft error %g", fFwdErr);
+	CHECK(fInvErr < ROUND_TRIP_TOL, "ifft error %g", fInvErr);
+	CHECK(fRoundErr < ROUND_TRIP_TOL, "round trip error %g", fRoundErr);
+}
+
+/*
+ * The real-input transform against the DFT and against the complex FFT of
+ * the same samples; its inverse against the inverse DFT of a full Hermitian
+ * spectrum, and undoing the forward transform.
+ */
+static void TestFftReal(void)
+{
+	float x[FFT_N];
+	float y[FFT_N];
+	Cplx xc[FFT_N];
+	Cplx Xc[FFT_N];
+	Cplx X[FFT_REAL_BINS];
+	double fRe[FFT_N];
+	double fIm[FFT_N];
+	double fDftRe[FFT_N];
+	double fDftIm[FFT_N];
+	double fFwdErr = 0.0;
+	double fCfftErr = 0.0;
+	double fInvErr = 0.0;
+	double fRoundErr = 0.0;
+	uint32_t nTrial;
+	uint32_t n;
+	uint32_t k;
+
+	printf("real fft and ifft against the dft\n");
+
+	srand(3u);
+	for (nTrial = 0u; nTrial < FFT_TRIALS; nTrial++)
+	{
+		for (n = 0u; n < FFT_N; n++)
+		{
+			x[n] = Uniform();
+			xc[n] = CplxMake(x[n], 0.0f);
+			fRe[n] = x[n];
+			fIm[n] = 0.0;
+		}
+		FftRealForward(x, X);
+		FftForward(xc, Xc);
+		Dft(fRe, fIm, fDftRe, fDftIm, 0);
+		for (k = 0u; k < FFT_REAL_BINS; k++)
+		{
+			fFwdErr = fmax(fFwdErr, CplxErr(X[k], fDftRe[k], fDftIm[k]));
+			fCfftErr = fmax(fCfftErr, CplxErr(X[k], Xc[k].re, Xc[k].im));
+		}
+		CHECK(X[0].im == 0.0f && X[FFT_N / 2u].im == 0.0f, "bins 0 and N/2 not real");
+
+		FftRealInverse(X, y);
+		/* the full spectrum: X[N-k] = X[k]* */
+		for (k = 0u; k < FFT_N; k++)
+		{
+			Cplx Xk = (k <= FFT_N / 2u) ? X[k] : CplxConj(X[FFT_N - k]);
+			fRe[k] = Xk.re;
+			fIm[k] = Xk.im;
+		}
+		Dft(fRe, fIm, fDftRe, fDftIm, 1);
+		for (n = 0u; n < FFT_N; n++)
+		{
+			fInvErr = fmax(fInvErr, fabs(y[n] - fDftRe[n]));
+			fRoundErr = fmax(fRoundErr, fabs((double)y[n] - x[n]));
+		}
+	}
+
+	printf("  max error: rfft %.2e (against cfft %.2e), rifft %.2e, rifft(rfft(x)) - x %.2e\n",
+	       fFwdErr, fCfftErr, fInvErr, fRoundErr);
+	CHECK(fFwdErr < FFT_TOL, "rfft error %g", fFwdErr);
+	CHECK(fCfftErr < FFT_TOL, "rfft differs from cfft by %g", fCfftErr);
+	CHECK(fInvErr < ROUND_TRIP_TOL, "rifft error %g", fInvErr);
+	CHECK(fRoundErr < ROUND_TRIP_TOL, "round trip error %g", fRoundErr);
+
+	/* a real signal has no imaginary part at DC and Nyquist: it is ignored */
+	FftRealForward(x, X);
+	X[0].im = 1.0f;
+	X[FFT_N / 2u].im = -1.0f;
+	FftRealInverse(X, SigOut);
+	CHECK(MaxAbsDiff(SigOut, y, FFT_N) == 0.0, "imaginary parts of bins 0 and N/2 changed the output");
+}
+
+/*
+ * A cosine at bin k lands in bin k alone, with magnitude N/2 (N at DC and
+ * Nyquist).
+ */
+static void TestFftBins(void)
+{
+	float x[FFT_N];
+	Cplx X[FFT_REAL_BINS];
+	uint32_t k;
+	uint32_t n;
+	uint32_t j;
+
+	printf("one cosine per bin\n");
+
+	for (k = 0u; k < FFT_REAL_BINS; k++)
+	{
+		double fExpect = ((k == 0u) || (k == FFT_N / 2u)) ? FFT_N : (FFT_N / 2.0);
+		double fLeak = 0.0;
+
+		for (n = 0u; n < FFT_N; n++)
+		{
+			x[n] = (float)cos(2.0 * M_PI * (double)((n * k) % FFT_N) / FFT_N);
+		}
+		FftRealForward(x, X);
+		for (j = 0u; j < FFT_REAL_BINS; j++)
+		{
+			if (j != k)
+			{
+				fLeak = fmax(fLeak, hypot(X[j].re, X[j].im));
+			}
+		}
+		CHECK(fabs(X[k].re - fExpect) < FFT_TOL && fabs(X[k].im) < FFT_TOL,
+		      "bin %u: %g + j %g, expected %g", k, X[k].re, X[k].im, fExpect);
+		CHECK(fLeak < FFT_TOL, "bin %u leaks %g into other bins", k, fLeak);
 	}
 }
 
 /*
- * The tone channel carries the table's tone at its frequency, scaled by the
- * interpolator's pass band gain there; what is left over is its images at
- * k LOW_FS +- f, each scaled by the stop band.
+ * Even channels come out as their input delayed by FFT_N samples, to within
+ * the rounding of FFT and IFFT in float; odd channels as each frame low-passed on its own, computed here with
+ * the double DFT; channels past the maximum pass straight through.
  */
-static void TestTone(void)
+static void TestChannels(void)
 {
-	double fTone = (double)RATE8K_TONE_HZ;
-	double fTablePower = 0.0;
-	double fRe = 0.0;
-	double fIm = 0.0;
-	double fImagePower = 0.0;
-	double fToneGain;
-	double fToneDb;
-	double fImageDb;
-	double fGotToneDb;
-	double fGotImageDb;
-	uint32_t nIndex;
+	const uint32_t nChannels = AUDIO_PROCESS_MAX_CHANNELS + 2u;
+	const uint32_t nFrames = 32u * FFT_N;
+	double fRe[FFT_N];
+	double fIm[FFT_N];
+	double fXRe[FFT_N];
+	double fXIm[FFT_N];
+	double fY[FFT_N];
+	uint32_t nChannel;
 	uint32_t nFrame;
-	uint32_t nCount = TONE_FRAMES - TONE_SETTLE;
+	uint32_t nBlock;
+	uint32_t k;
+	int32_t nDelayErr = 0;
+	int32_t nPassErr = 0;
+	int32_t nLowErr = 0;
 
-	printf("tone channel\n");
+	printf("channels: delayed copy, per-frame low-pass, pass-through\n");
 
-	for (nIndex = 0u; nIndex < RATE8K_TONE_LEN; nIndex++)
+	srand(4u);
+	for (nFrame = 0u; nFrame < nFrames * nChannels; nFrame++)
 	{
-		fTablePower += (double)Rate8kTone[nIndex] * Rate8kTone[nIndex];
+		In[nFrame] = FloatToS24(0.9f * Uniform());
 	}
-	fTablePower /= RATE8K_TONE_LEN;
 
-	fToneGain = pow(10.0, FirGainDb(MultirateTaps, MULTIRATE_TAPS, fTone, FS) / 20.0);
-	fToneDb = 10.0 * log10(fTablePower * fToneGain * fToneGain);
-	for (nIndex = 1u; (nIndex * LOW_FS) - fTone < (FS / 2.0); nIndex++)
+	AudioProcessInit();
+	for (nFrame = 0u; nFrame < nFrames; nFrame += BLOCK_FRAMES)
 	{
-		double fBelow = (nIndex * LOW_FS) - fTone;
-		double fAbove = (nIndex * LOW_FS) + fTone;
+		AudioProcess(&In[nFrame * nChannels], &Out[nFrame * nChannels], BLOCK_FRAMES, nChannels);
+	}
 
-		fImagePower += pow(10.0, FirGainDb(MultirateTaps, MULTIRATE_TAPS, fBelow, FS) / 10.0);
-		if (fAbove < (FS / 2.0))
+	for (nChannel = 0u; nChannel < nChannels; nChannel++)
+	{
+		for (nFrame = 0u; nFrame < nFrames; nFrame++)
 		{
-			fImagePower += pow(10.0, FirGainDb(MultirateTaps, MULTIRATE_TAPS, fAbove, FS) / 10.0);
+			int32_t nGot = Out[(nFrame * nChannels) + nChannel];
+
+			if (nChannel >= AUDIO_PROCESS_MAX_CHANNELS)
+			{
+				nPassErr = (int32_t)fmax(nPassErr, abs(nGot - In[(nFrame * nChannels) + nChannel]));
+			}
+			else if (nFrame < FFT_N)
+			{
+				/* the first frame is still filling: silence */
+				nDelayErr = (int32_t)fmax(nDelayErr, abs(nGot));
+			}
+			else if ((nChannel % 2u) == 0u)
+			{
+				nDelayErr = (int32_t)fmax(nDelayErr, abs(nGot - In[((nFrame - FFT_N) * nChannels) + nChannel]));
+			}
 		}
 	}
-	fImageDb = 10.0 * log10(fTablePower * fImagePower);
 
-	/* channel 0's input does not reach the tone channel */
-	RunTone(fTone);
-	/* the tone's own component, by correlation over whole periods */
-	for (nFrame = TONE_SETTLE; nFrame < TONE_FRAMES; nFrame++)
+	/* odd channels: each input frame, DFT, mask, inverse DFT, then out a frame later */
+	for (nChannel = 1u; nChannel < AUDIO_PROCESS_MAX_CHANNELS; nChannel += 2u)
 	{
-		double fX = (double)Out[(nFrame * TEST_CHANNELS) + 1u] / S24_SCALE;
-		fRe += fX * cos(2.0 * M_PI * fTone * nFrame / FS);
-		fIm += fX * sin(2.0 * M_PI * fTone * nFrame / FS);
+		for (nBlock = 0u; nBlock + 1u < nFrames / FFT_N; nBlock++)
+		{
+			for (k = 0u; k < FFT_N; k++)
+			{
+				fRe[k] = S24ToFloat(In[(((nBlock * FFT_N) + k) * nChannels) + nChannel]);
+				fIm[k] = 0.0;
+			}
+			Dft(fRe, fIm, fXRe, fXIm, 0);
+			for (k = 0u; k < FFT_N; k++)
+			{
+				double fGain = FftBinGain[(k <= FFT_N / 2u) ? k : (FFT_N - k)];
+				fXRe[k] *= fGain;
+				fXIm[k] *= fGain;
+			}
+			Dft(fXRe, fXIm, fY, fIm, 1);
+			for (k = 0u; k < FFT_N; k++)
+			{
+				int32_t nGot = Out[((((nBlock + 1u) * FFT_N) + k) * nChannels) + nChannel];
+				int32_t nExpect = (int32_t)lround(fY[k] * S24_SCALE);
+				nLowErr = (int32_t)fmax(nLowErr, abs(nGot - nExpect));
+			}
+		}
 	}
-	/* a sine of amplitude A correlates to A N / 2; its power is A^2 / 2 */
-	fGotToneDb = 10.0 * log10(2.0 * ((fRe * fRe) + (fIm * fIm)) / ((double)nCount * nCount));
-	fGotImageDb = 10.0 * log10(SettledPower(Out, 1u) - pow(10.0, fGotToneDb / 10.0));
 
-	printf("  tone %.2f dB (computed %.2f), images %.2f dB (computed %.2f)\n",
-	       fGotToneDb, fToneDb, fGotImageDb, fImageDb);
-	CHECK(fabs(fGotToneDb - fToneDb) < GAIN_TOL_DB, "tone %.3f dB, computed %.3f dB", fGotToneDb, fToneDb);
-	CHECK(fabs(fGotImageDb - fImageDb) < STOP_TOL_DB, "images %.3f dB, computed %.3f dB", fGotImageDb, fImageDb);
+	printf("  max error in LSB: delayed copy %d, low-pass %d, pass-through %d\n", nDelayErr, nLowErr, nPassErr);
+	CHECK(nDelayErr <= ROUND_TRIP_LSB, "even channels differ from the delayed input by %d LSB", nDelayErr);
+	CHECK(nLowErr <= ROUND_TRIP_LSB, "odd channels differ from the per-frame low-pass by %d LSB", nLowErr);
+	CHECK(nPassErr == 0, "channels past the maximum changed by %d LSB", nPassErr);
 }
 
 int main(void)
@@ -643,10 +693,12 @@ int main(void)
 	TestBiquadMatchesDifferenceEquation();
 	TestDecimator();
 	TestInterpolator();
-	TestBlockBoundary();
+	TestFftTables();
+	TestFftComplex();
+	TestFftReal();
+	TestFftBins();
 	TestChannels();
-	TestFrequencyResponse();
-	TestTone();
+	TestBlockBoundary();
 
 	if (nFailures != 0u)
 	{

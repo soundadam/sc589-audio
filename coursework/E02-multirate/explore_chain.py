@@ -17,8 +17,8 @@ from dsplab import cdsp, response
 
 FS = 48000      # the codecs' rate (SAMPLE_RATE in adc_dac_playback.h)
 
-# %% Impulse response of each channel of the current AudioProcess()
-ir = cdsp.impulse(512, channels=2)
+# %% Impulse response of each channel of E02's AudioProcess()
+ir = cdsp.impulse(512, channels=2, rev=design.DSP_REV)
 fig, ax = plt.subplots()
 for ch in range(ir.shape[1]):
     r = response.from_impulse(ir[:, ch], fs=FS)
@@ -28,7 +28,7 @@ ax.legend()
 
 # %% Block invariance: the same stream in 64-frame and in odd-sized blocks
 x = np.random.default_rng(1).uniform(-0.4, 0.4, (8192, 2))
-print("max difference:", np.abs(cdsp.process(x) - cdsp.process(x, block=7)).max())
+print("max difference:", np.abs(cdsp.process(x, rev=design.DSP_REV) - cdsp.process(x, block=7, rev=design.DSP_REV)).max())
 
 # %% scipy reference: decimate by M, then interpolate back, one tone per run,
 # with the same prototype the firmware uses. A tone above LOW_FS / 2 should

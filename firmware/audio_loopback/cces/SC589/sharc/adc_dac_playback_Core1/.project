@@ -110,6 +110,11 @@
 			<locationURI>PARENT-4-PROJECT_LOC/dsp/biquad.h</locationURI>
 		</link>
 		<link>
+			<name>src/cplx.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/cplx.h</locationURI>
+		</link>
+		<link>
 			<name>src/board_setup.c</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.c</locationURI>
@@ -118,6 +123,26 @@
 			<name>src/board_setup.h</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.h</locationURI>
+		</link>
+		<link>
+			<name>src/fft.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fft.c</locationURI>
+		</link>
+		<link>
+			<name>src/fft.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fft.h</locationURI>
+		</link>
+		<link>
+			<name>src/fft_tables.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fft_tables.c</locationURI>
+		</link>
+		<link>
+			<name>src/fft_tables.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fft_tables.h</locationURI>
 		</link>
 		<link>
 			<name>src/filter_report.c</name>

@@ -21,7 +21,7 @@ macOS 上不能编译；调试器 ICE 的驱动也没有 Mac 版。我手边只�
 | 目录 | 内容 |
 |---|---|
 | `firmware/audio_loopback/` | ADC → 处理 → DAC 回环程序，入口 `adc_dac_playback.c` 不在仓库里（见下一节） |
-| `firmware/audio_loopback/dsp/` | 信号处理，纯 C99，不依赖 CCES 和板卡：`audio_process.c` 按声道调用 `multirate.c`（降采样、升采样）、`biquad.c`、`tone.c`；`multirate_coeffs.*` 由 `coursework/E02-multirate/design.py` 生成，`lowpass_coeffs.*`（E01，`fir.c` 的测试也用它）由 `coursework/E01-fir-iir/design.py` 生成 |
+| `firmware/audio_loopback/dsp/` | 信号处理，纯 C99，不依赖 CCES 和板卡：`audio_process.c` 是当前实验（E03）的处理链，按 32 点帧调用 `fft.c`（FFT/IFFT，复数运算在 `cplx.h`）；`fft_tables.*` 由 `coursework/E03-fft/design.py` 生成；E02 的 `multirate.c`、`biquad.c`、`tone.c` 仍在，E02 的报告用 `cdsp` 从它的提交里取当时的 `audio_process.c`；`multirate_coeffs.*` 由 `coursework/E02-multirate/design.py` 生成，`lowpass_coeffs.*`（E01，`fir.c` 的测试也用它）由 `coursework/E01-fir-iir/design.py` 生成 |
 | `firmware/audio_loopback/dsp/test/` | `dsp/` 的主机端测试 |
 | `firmware/audio_loopback/platform/` | 串口控制台（`uart_console.c`）；`filter_report.c` 在启动时把滤波器的冲激响应和周期数打到控制台 |
 | `firmware/audio_loopback/cces/SC589/sharc/` | 三个核的 CCES 工程，源码通过链接引用 `firmware/audio_loopback/` 下的文件 |
