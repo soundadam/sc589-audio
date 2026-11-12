@@ -1,19 +1,29 @@
 /*!
  * @file      filter_report.h
- * @brief     Measures the multirate chain on the board and prints the result.
+ * @brief     Measures E04's overlap-save filters on the board and prints the result.
  *
- *            Runs an impulse through AudioProcess() and times each stage of
- *            the chain on one FRAMES_PER_BUFFER block, outside the audio
- *            path, and prints one comma-separated line per value:
+ *            Runs a 16 kHz impulse through the plain and the partitioned
+ *            overlap-save filters and times each way of filtering one hop
+ *            (OLS_HOP low-rate samples) outside the audio path, then times
+ *            AudioProcess() over the blocks of one hop. Prints one
+ *            comma-separated line per value:
  *
  *              clock,cclk,<Hz>                     core clock the cycles count
  *              ir,<name>,<n>,<h[n]>                impulse response, n from 0
- *              cycles,<stage>,<frames>,<cycles>    core cycles for one block
+ *              cycles,<stage>,<frames>,<cycles>    core cycles for <frames> samples
  *
- *            The impulse response is chain, channel 0 of AudioProcess(). A
- *            <stage> is decimator, iir (on the low-rate samples of one
- *            block), interpolator, or audio_process for a whole block of
- *            NUM_CHANNELS channels including the fixed/float conversions.
+ *            The impulse responses are ols (order 255) and partitioned
+ *            (order 1023) at 16 kHz, OLS_HOP samples late: h[n - OLS_HOP].
+ *            The <stage>s are, for one hop:
+ *
+ *              fir255, fir1023         point-by-point FIR (fir.h)
+ *              ols, partitioned        overlap-save, P = 1 and P = 4 (ols.h)
+ *              fft512, ifft512         RealFftForward(), RealFftInverse() of one frame
+ *              rfft512                 the CCES run-time library's rfft512() (trans.h)
+ *
+ *            and audio_process for the FRAMES_PER_BUFFER-frame blocks of one
+ *            hop at the codec rate, all NUM_CHANNELS channels, with
+ *            audio_process_peak its costliest block.
  *            host/dsplab/boardlog.py reads these lines from a console log.
  */
 

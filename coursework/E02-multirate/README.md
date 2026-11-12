@@ -16,7 +16,7 @@
 | 回路 | 命令 | 看什么 |
 |---|---|---|
 | 设计与 C 实现 | 在编辑器的交互窗口里逐格运行 `explore_chain.py` | 改了 `dsp/*.c` 后重跑一格，`cdsp` 会自动重新编译 |
-| 听 | `uv run python -m dsplab.wavrun in.wav build/E02/out.wav --play` | 混叠和镜像，不经板卡 |
+| 听 | `uv run python -m dsplab.wavrun in.wav build/E02/out.wav --experiment 2 --play` | 混叠和镜像，不经板卡 |
 | 板卡 | `make board` | 周期数、模拟通路 |
 
 能支撑报告结论的探索留在 `explore_*.py` 里并入库；走不通的放在仓库根目录的 `scratch/`（不入库）。

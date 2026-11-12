@@ -1,11 +1,14 @@
 # Local gate: run before every commit. Needs only a C99 compiler and python3;
-# no CCES, board or network.
+# no CCES, board or network. With uv, it also checks E04's chain against scipy.
 
 .PHONY: check
 
 check:
 	$(MAKE) -C firmware/audio_loopback/dsp/test test
 	python3 -m unittest discover -s host/board
+	@if command -v uv >/dev/null; then \
+		uv run python -m unittest discover -s coursework/E04-overlap-save -p 'test_*.py'; \
+	else echo 'uv not found: skipping the E04 chain test against scipy' >&2; fi
 	@# ADI-licensed files belong in sc589-adi (.claude/rules/vendor.md)
 	@if git grep -l -E 'Analog Devices,? Inc\.?,? All Rights Reserved' -- ':!.claude'; then \
 		echo 'ADI-licensed files above must not be committed here' >&2; exit 1; fi
@@ -39,7 +42,7 @@ endef
 
 # E01 reads the impulse responses and cycle counts in build/E01/board.log, from
 # make board EXPERIMENT=E01
-.PHONY: e01 e02
+.PHONY: e01 e02 e04
 
 e01:
 	$(call report,E01,E01-fir-iir)
@@ -48,3 +51,7 @@ e01:
 # numbers when build/E02/board.log is there
 e02:
 	$(call report,E02,E02-multirate)
+
+# E04 likewise, with build/E04/board.log from make board EXPERIMENT=E04
+e04:
+	$(call report,E04,E04-overlap-save)

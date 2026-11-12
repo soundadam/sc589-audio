@@ -5,6 +5,7 @@
 
 #include <string.h>
 #include "multirate.h"
+#include "speed.h"
 
 void DecimatorInit(Decimator *pDec, const float *pCoeffs, float *pDelay,
                    uint32_t nTaps, uint32_t nFactor)

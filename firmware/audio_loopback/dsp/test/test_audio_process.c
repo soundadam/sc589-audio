@@ -5,7 +5,9 @@
  *            The sources are included directly rather than linked, so the
  *            tests can see the static conversion helpers in audio_process.c.
  *            Expected values come from the same coefficient tables the
- *            firmware uses, recomputed here in double precision. Builds with
+ *            firmware uses, recomputed here in double precision. These
+ *            tests run E02's chain; test_ols.c and
+ *            coursework/E04-overlap-save/test_chain.py cover E04's. Builds with
  *            any C99 compiler; see Makefile.
  */
 
@@ -15,6 +17,11 @@
 #include <string.h>
 
 #include "../audio_process.c"
+#include "../chain_e02.c"
+#include "../chain_e04.c"
+#include "../fft.c"
+#include "../ols.c"
+#include "../ols_coeffs.c"
 #include "../fir.c"
 #include "../biquad.c"
 #include "../multirate.c"
@@ -637,6 +644,11 @@ static void TestTone(void)
 
 int main(void)
 {
+	printf("Chain selection\n");
+	CHECK(AudioProcessSelect(3u) != 0, "experiment 3 accepted");
+	CHECK(pSelected->nExperiment == AUDIO_PROCESS_E04, "E04 is not the default");
+	CHECK(AudioProcessSelect(AUDIO_PROCESS_E02) == 0, "E02 refused");
+
 	TestConversions();
 	TestFirImpulse();
 	TestFirMatchesConvolution();

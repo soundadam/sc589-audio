@@ -25,8 +25,27 @@
 #define AUDIO_PROCESS_MAX_CHANNELS  (4u)
 
 /*
- * Sets up the filters and clears their state. Call once before the first
- * AudioProcess(), and again to restart from silence.
+ * The experiments whose chains AudioProcess() can run. E04 is the default.
+ */
+#define AUDIO_PROCESS_E02           (2u)
+#define AUDIO_PROCESS_E04           (4u)
+
+/*
+ * Selects the chain AudioProcess() runs, then sets it up as
+ * AudioProcessInit() does.
+ *
+ * Parameters
+ *  nExperiment AUDIO_PROCESS_E02 or AUDIO_PROCESS_E04
+ *
+ * Returns
+ *  0 on success, -1 for an unknown experiment, which leaves the selection as it was
+ *
+ */
+int32_t AudioProcessSelect(uint32_t nExperiment);
+
+/*
+ * Sets up the selected chain's filters and clears their state. Call once
+ * before the first AudioProcess(), and again to restart from silence.
  */
 void AudioProcessInit(void);
 
@@ -34,9 +53,7 @@ void AudioProcessInit(void);
  * Produces one output block from one input block.
  *
  * Each channel is converted from sign-extended 24-bit fixed point to float,
- * taken down to the low rate and processed there (IIR low-pass on even
- * channels, test tone on odd ones), brought back up to the codec rate, then
- * saturated and rounded back. Filter state carries over between calls, so
+ * run through the selected chain (chain.h), then saturated and rounded back. Filter state carries over between calls, so
  * consecutive blocks must belong to one stream.
  *
  * Parameters

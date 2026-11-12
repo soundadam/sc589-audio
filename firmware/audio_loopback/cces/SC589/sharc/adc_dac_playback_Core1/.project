@@ -120,6 +120,31 @@
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.h</locationURI>
 		</link>
 		<link>
+			<name>src/chain.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/chain.h</locationURI>
+		</link>
+		<link>
+			<name>src/chain_e02.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/chain_e02.c</locationURI>
+		</link>
+		<link>
+			<name>src/chain_e04.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/chain_e04.c</locationURI>
+		</link>
+		<link>
+			<name>src/fft.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fft.c</locationURI>
+		</link>
+		<link>
+			<name>src/fft.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/fft.h</locationURI>
+		</link>
+		<link>
 			<name>src/filter_report.c</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/filter_report.c</locationURI>
@@ -168,6 +193,31 @@
 			<name>src/multirate_coeffs.h</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/dsp/multirate_coeffs.h</locationURI>
+		</link>
+		<link>
+			<name>src/ols.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols.c</locationURI>
+		</link>
+		<link>
+			<name>src/ols.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols.h</locationURI>
+		</link>
+		<link>
+			<name>src/ols_coeffs.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols_coeffs.c</locationURI>
+		</link>
+		<link>
+			<name>src/ols_coeffs.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols_coeffs.h</locationURI>
+		</link>
+		<link>
+			<name>src/speed.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/speed.h</locationURI>
 		</link>
 		<link>
 			<name>src/tone.c</name>

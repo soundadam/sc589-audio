@@ -74,14 +74,14 @@ def measured_chain_db(freqs):
     for f in freqs:
         x = np.zeros((TONE_FRAMES, 2))
         x[:, 0] = TONE_LEVEL * np.sin(2 * np.pi * f * t)
-        y = cdsp.process(x)[SETTLE_FRAMES:, 0]
+        y = cdsp.process(x, experiment=2)[SETTLE_FRAMES:, 0]
         gains.append(10 * np.log10(np.mean(y ** 2) / np.mean(x[SETTLE_FRAMES:, 0] ** 2) + 1e-30))
     return np.array(gains)
 
 
 def tone_spectrum():
     """Spectrum of the tone channel in dB of full scale, Blackman window."""
-    y = cdsp.process(np.zeros((SETTLE_FRAMES + SPECTRUM_FRAMES, 2)))[SETTLE_FRAMES:, 1]
+    y = cdsp.process(np.zeros((SETTLE_FRAMES + SPECTRUM_FRAMES, 2)), experiment=2)[SETTLE_FRAMES:, 1]
     w = np.blackman(len(y))
     spec = np.abs(np.fft.rfft(y * w)) / (w.sum() / 2)
     return np.fft.rfftfreq(len(y), 1 / design.SAMPLE_RATE), 20 * np.log10(spec + 1e-12)
@@ -173,7 +173,7 @@ def main():
     except FileNotFoundError:
         run = None
     if run is not None and "chain" in run.impulse:
-        mac = cdsp.impulse(len(run.impulse["chain"]))[:, 0]
+        mac = cdsp.impulse(len(run.impulse["chain"]), experiment=2)[:, 0]
         plot.impulse([plot.Series("声道 0（降采样、IIR、升采样）", impulse=mac, measured=run.impulse["chain"])],
                       OUT / "board_impulse.pdf", reference="Mac 上的 C 代码")
         budget = run.cclk_hz / fs

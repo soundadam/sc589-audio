@@ -9,7 +9,8 @@ without restarting Python. Each build gets its own file name, because a
 process cannot unload a library it has loaded and would keep the old code.
 
 The samples go through AudioProcess() exactly as on the board: 24-bit fixed
-point in and out, 64-frame blocks, filter state carried between blocks.
+point in and out, 64-frame blocks, filter state carried between blocks. Each
+call names the experiment whose chain it runs (AudioProcessSelect()).
 """
 
 import ctypes
@@ -60,6 +61,8 @@ def library():
     lib = ctypes.CDLL(str(path))
     lib.AudioProcessInit.argtypes = []
     lib.AudioProcessInit.restype = None
+    lib.AudioProcessSelect.argtypes = [ctypes.c_uint32]
+    lib.AudioProcessSelect.restype = ctypes.c_int32
     lib.AudioProcess.argtypes = [
         np.ctypeslib.ndpointer(np.int32, flags="C_CONTIGUOUS"),
         np.ctypeslib.ndpointer(np.int32, flags="C_CONTIGUOUS"),
@@ -80,11 +83,12 @@ def from_s24(x):
     return np.asarray(x, dtype=float) / S24_SCALE
 
 
-def process(x, *, block=BLOCK_FRAMES, init=True):
+def process(x, *, experiment, block=BLOCK_FRAMES, init=True):
     """Run x through AudioProcess() in blocks of `block` frames.
 
-    x       frames x channels, or one dimension for a single channel; floats in [-1, 1)
-    init    clear the filter state first; False continues the previous stream
+    x           frames x channels, or one dimension for a single channel; floats in [-1, 1)
+    experiment  2 or 4: the chain to run (AUDIO_PROCESS_E02, AUDIO_PROCESS_E04)
+    init        clear the filter state first; False continues the previous stream
 
     Returns floats of the same shape as x.
     """
@@ -96,7 +100,8 @@ def process(x, *, block=BLOCK_FRAMES, init=True):
 
     lib = library()
     if init:
-        lib.AudioProcessInit()
+        if lib.AudioProcessSelect(experiment) != 0:
+            raise ValueError("no chain for experiment %r" % (experiment,))
     for start in range(0, len(src), block):
         n = min(block, len(src) - start)
         out = np.empty((n, channels), dtype=np.int32)
@@ -105,7 +110,7 @@ def process(x, *, block=BLOCK_FRAMES, init=True):
     return from_s24(dst).reshape(x.shape)
 
 
-def impulse(n, *, channels=2):
+def impulse(n, *, experiment, channels=2):
     """First n samples of each channel's response to a unit impulse at half scale.
 
     Half scale keeps the IIR's overshoot clear of saturation; the result is
@@ -114,4 +119,4 @@ def impulse(n, *, channels=2):
     """
     x = np.zeros((n, channels))
     x[0] = 0.5
-    return process(x) / 0.5
+    return process(x, experiment=experiment) / 0.5
