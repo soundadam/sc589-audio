@@ -299,6 +299,18 @@ static void TestBlockBoundary(void)
 
 	CHECK(memcmp(Ref, Out, nFrames * TEST_CHANNELS * sizeof(int32_t)) == 0,
 	      "output depends on how the stream is split into blocks");
+
+	/* in place, pOut == pIn, as platform/filter_report.c calls it */
+	memcpy(Out, In, nFrames * TEST_CHANNELS * sizeof(int32_t));
+	AudioProcessInit();
+	for (nDone = 0u; nDone < nFrames; nDone += BLOCK_FRAMES)
+	{
+		AudioProcess(&Out[nDone * TEST_CHANNELS], &Out[nDone * TEST_CHANNELS],
+		             BLOCK_FRAMES, TEST_CHANNELS);
+	}
+
+	CHECK(memcmp(Ref, Out, nFrames * TEST_CHANNELS * sizeof(int32_t)) == 0,
+	      "output differs when processed in place");
 }
 
 static void TestDecimator(void)

@@ -145,9 +145,10 @@ void AudioProcess(const int32_t *pIn, int32_t *pOut,
 			}
 			else
 			{
-				/* play out the last frame's sample at this position, then replace it */
-				pOut[nIndex] = FloatToS24(FrameOut[nChannel][nPos]);
+				/* take the input first, so pOut may be pIn, then play out the
+				   last frame's sample at this position */
 				FrameIn[nChannel][nPos] = S24ToFloat(pIn[nIndex]);
+				pOut[nIndex] = FloatToS24(FrameOut[nChannel][nPos]);
 			}
 		}
 

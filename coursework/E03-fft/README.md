@@ -36,12 +36,12 @@ make e03
 - [x] 32 点实时 FFT 与 IFFT，接进音频回环（`audio_process.c`）
 - [x] 旋转因子等公共变量预先初始化：`design.py` 生成 `const` 表，运行时不调用 sin/cos
 - [x] 复数运算自行编写：`dsp/cplx.h`
-- [ ] 与 CCES 运行库 `rfftN`/`ifftN` 比较结果与效率：`filter_report.c` 已写好，待上板运行
+- [x] 与 CCES 运行库 `rfftN`/`ifftN` 比较结果与效率：`filter_report.c` 在板上运行，结果进报告第 4.4 节
 - [x] 报告：原理与框图、关键代码、结果分析
 
 实现与验证：
 
 - [x] `dsp/test/` 测表、复数与实 FFT/IFFT 对双精度 DFT、往返误差、实时链（偶数声道为延迟副本，奇数声道为逐帧低通）
-- [ ] 在 noah 上用 CCES 构建通过
-- [ ] 在板上运行（`make board EXPERIMENT=E03`），报告里出现运行库比较与周期数
+- [x] 在 noah 上用 CCES 构建通过
+- [x] 在板上运行（`make board EXPERIMENT=E03`），报告里出现运行库比较与周期数
 - [ ] 在板上听：偶数声道与输入相同（延迟 0.67 ms），奇数声道只剩 3 kHz 以下

@@ -41,7 +41,7 @@ void AudioProcessInit(void);
  *
  * Parameters
  *  pIn         interleaved source samples, nFrames * nChannels of them
- *  pOut        interleaved destination samples, same count
+ *  pOut        interleaved destination samples, same count; may be pIn
  *  nFrames     number of frames in the block
  *  nChannels   samples per frame
  *

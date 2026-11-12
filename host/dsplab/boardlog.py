@@ -45,7 +45,8 @@ def parse(lines):
     samples = {}
     vectors = {}
     for line in lines:
-        fields = line.strip().split(",")
+        # The UART can deliver a garbage byte at reset, ahead of the first line
+        fields = line.strip().lstrip("\ufffd\x00").split(",")
         if fields[0] == "clock" and len(fields) == 3 and fields[1] == "cclk":
             run.cclk_hz = int(fields[2])
         elif fields[0] == "ir" and len(fields) == 4:
