@@ -231,8 +231,16 @@ CCES \texttt{rfft512} & \LibFftCycles & \LibFftPerSample \\
 \end{tabular}
 \end{table}
 
-重叠保留比逐点 FIR 快 \ShortSpeedup{} 倍（\ShortOrder{} 阶）和 \LongSpeedup{} 倍（\LongOrder{} 阶）。
-CCES 库的 \texttt{rfft512} 比自写的 FFT 快 \LibFftRatio{} 倍。整个 \texttt{AudioProcess}（四声道，含降采样与升采样）
+重叠保留比逐点 FIR 快 \ShortSpeedup{} 倍（\ShortOrder{} 阶）和 \LongSpeedup{} 倍（\LongOrder{} 阶），
+都比乘法次数之比（\MulRatioShort{} 和 \MulRatioLong{}）小。原因是两种循环每次乘法花的周期差得多：
+逐点 FIR 的乘累加是连续访存的单重循环，编译器能流水化，每次乘法约 \FirShortPerMul{} 个周期（\LongOrder{} 阶 \FirLongPerMul）；
+重叠保留每次乘法约 \OlsShortPerMul{} 个周期（分段 \OlsLongPerMul），其中 FFT 约 \FftPerMul{} 个，
+时间花在位反序重排、跨步取旋转因子和蝶形的下标计算上，以及帧之间的数据拷贝。
+所以 \ShortOrder{} 阶时 FFT 的固定开销只勉强被摊薄，而 \LongOrder{} 阶分段时每多一段只多一次谱相乘，
+优势才明显：分段滤波处理 4 倍长的滤波器，每样本周期只比 \ShortOrder{} 阶重叠保留多 $\OlsLongPerSample-\OlsShortPerSample$ 个。
+
+CCES 库的 \texttt{rfft512} 用 \LibFftCycles{} 个周期，与自写的 FFT（\FftCycles）几乎相同（比值 \LibFftRatio）。
+整个 \texttt{AudioProcess}（四声道，含降采样与升采样）
 在一个帧移的 \AudioFrames{} 帧里共用 \AudioCycles{} 个周期，平均每帧 \AudioPerFrame{} 个，占预算的 \AudioLoad\%；
 最忙的一块（\PeakFrames{} 帧）用 \PeakCycles{} 个周期，占该块预算的 \PeakLoad\%。
 \else
@@ -248,6 +256,6 @@ CCES 库的 \texttt{rfft512} 比自写的 FFT 快 \LibFftRatio{} 倍。整个 \t
 重叠保留法把 FIR 的运算量从每样本 $L$ 次乘法降到 $O(\log L)$ 次，代价是 $B$ 个样本的延迟；
 分段滤波在帧移不变的前提下处理更长的滤波器，运算量几乎不增加，延迟仍由帧移决定。
 本实验的 C 代码在 Mac 上与 SciPy 逐样本一致，误差在 24 位量化以内。
-\ifdefined\BoardRun 板上测得的周期数与上面的乘法计数趋势一致。\fi
+\ifdefined\BoardRun 板上实测，重叠保留对 \ShortOrder{} 阶快 \ShortSpeedup{} 倍、分段对 \LongOrder{} 阶快 \LongSpeedup{} 倍；FFT 每次乘法的周期数远高于逐点 FIR，所以滤波器越长，频域方法的优势越大。\fi
 
 \end{document}

@@ -143,7 +143,14 @@ def board_macros(run, short, long):
         s += _macro(macro + "PerSample", "%.0f" % c[key].per_sample)
     s += _macro("ShortSpeedup", "%.1f" % (c["fir255"].cycles / c["ols"].cycles))
     s += _macro("LongSpeedup", "%.1f" % (c["fir1023"].cycles / c["partitioned"].cycles))
-    s += _macro("LibFftRatio", "%.1f" % (c["fft512"].cycles / c["rfft512"].cycles))
+    s += _macro("LibFftRatio", "%.2f" % (c["fft512"].cycles / c["rfft512"].cycles))
+    # cycles per real multiplication counted above, to compare how well each loop runs
+    hop = design.HOP
+    s += _macro("FirShortPerMul", "%.1f" % (c["fir255"].per_sample / len(short)))
+    s += _macro("FirLongPerMul", "%.1f" % (c["fir1023"].per_sample / len(long)))
+    s += _macro("OlsShortPerMul", "%.1f" % (c["ols"].per_sample / ols_muls_per_sample(hop, 1)))
+    s += _macro("OlsLongPerMul", "%.1f" % (c["partitioned"].per_sample / ols_muls_per_sample(hop, len(long) // hop)))
+    s += _macro("FftPerMul", "%.1f" % (c["fft512"].cycles / fft_muls(design.FFT_LEN)))
     whole = c["audio_process"]
     peak = c["audio_process_peak"]
     s += _macro("AudioFrames", "%d" % whole.frames)
