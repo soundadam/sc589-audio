@@ -16,32 +16,50 @@
 #include <stdint.h>
 
 /*
- * Channels with frame buffers. The play-back path hands over 64 frames of 4
- * channels (FRAMES_PER_BUFFER, NUM_CHANNELS); blocks may be any length, and
- * channels past the maximum are passed through unprocessed.
+ * Sizes of the per-channel float work buffers. The play-back path hands over
+ * 64 frames of 4 channels (FRAMES_PER_BUFFER, NUM_CHANNELS);
+ * longer blocks are filtered in chunks, and channels past the maximum are
+ * passed through unfiltered.
  */
+#define AUDIO_PROCESS_MAX_FRAMES    (64u)
 #define AUDIO_PROCESS_MAX_CHANNELS  (4u)
 
 /*
- * Clears the frame buffers. Call once before the first AudioProcess(), and
- * again to restart from silence.
+ * The experiments whose chains AudioProcess() can run. E04 is the default.
+ */
+#define AUDIO_PROCESS_E02           (2u)
+#define AUDIO_PROCESS_E03           (3u)
+#define AUDIO_PROCESS_E04           (4u)
+
+/*
+ * Selects the chain AudioProcess() runs, then sets it up as
+ * AudioProcessInit() does.
+ *
+ * Parameters
+ *  nExperiment AUDIO_PROCESS_E02, AUDIO_PROCESS_E03 or AUDIO_PROCESS_E04
+ *
+ * Returns
+ *  0 on success, -1 for an unknown experiment, which leaves the selection as it was
+ *
+ */
+int32_t AudioProcessSelect(uint32_t nExperiment);
+
+/*
+ * Sets up the selected chain's filters and clears their state. Call once
+ * before the first AudioProcess(), and again to restart from silence.
  */
 void AudioProcessInit(void);
 
 /*
  * Produces one output block from one input block.
  *
- * Each channel is converted from sign-extended 24-bit fixed point to float
- * and collected into frames of FFT_N samples (fft_tables.h). Each full frame
- * goes through FFT and IFFT, keeping every bin on even channels and only
- * those up to FFT_KEEP_HZ on odd ones, and is played out, saturated and
- * rounded back, while the next frame fills: the output lags the input by
- * FFT_N samples. Frames carry over between calls, so consecutive blocks must
- * belong to one stream.
+ * Each channel is converted from sign-extended 24-bit fixed point to float,
+ * run through the selected chain (chain.h), then saturated and rounded back. Filter state carries over between calls, so
+ * consecutive blocks must belong to one stream.
  *
  * Parameters
  *  pIn         interleaved source samples, nFrames * nChannels of them
- *  pOut        interleaved destination samples, same count; may be pIn
+ *  pOut        interleaved destination samples, same count
  *  nFrames     number of frames in the block
  *  nChannels   samples per frame
  *

@@ -20,10 +20,6 @@ FIRMWARE = REPO / "firmware" / "audio_loopback"
 
 # The codecs' rate; written into the header as MULTIRATE_SAMPLE_RATE, which
 # filter_report.c checks against the firmware's SAMPLE_RATE at compile time
-# E02's AudioProcess(), which later experiments replace: the report and the
-# exploration run the dsp/ sources as of this commit (dsplab.cdsp)
-DSP_REV = "d8747bba40a40aff5954a5c646ba6b82aa3ec4cd"
-
 SAMPLE_RATE = 48000
 LOW_RATE = 8000
 FACTOR = SAMPLE_RATE // LOW_RATE

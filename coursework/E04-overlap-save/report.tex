@@ -1,0 +1,261 @@
+% E04 report. Built by `make e04`; numbers come from build/E04/results.tex.
+\documentclass[zihao=-4, linespread=1.5, fontset=none]{ctexart}
+\usepackage{labreport}
+
+\graphicspath{{../../build/E04/}}
+\input{../../build/E04/results.tex}
+\input{../../build/E04/author.tex}
+\newcommand{\src}{../../firmware/audio_loopback/dsp}
+
+\title{实验 E04\quad 基于重叠保留法的实时滤波}
+\author{\ReportAuthor\quad\url{https://github.com/soundadam}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{实验内容}
+
+在 ADSP-SC589 EZ-Board 的音频回环里，把 \SampleRate~Hz 的输入降到 $f_L=\LowRate$~Hz，
+在 \LowRate~Hz 上用重叠保留法做 FIR 滤波，再升回 \SampleRate~Hz 输出：
+\begin{itemize}
+  \item 基本要求：\ShortOrder{} 阶 FIR，以 \LowRate~Hz 处理，用重叠保留法实现，并与逐点计算的时域 FIR 比较运算效率；
+  \item 提高要求：分段滤波，把 \LongOrder{} 阶 FIR 拆成 \Parts{} 个 \ShortOrder{} 阶 FIR，每段长 \Hop；
+  \item FFT 自行编写，并在板上与 CCES 库的 \texttt{rfft512} 比较速度。
+\end{itemize}
+降采样与升采样沿用 E02 的多相实现（\path{multirate.c}），只换了一组适合本实验的原型系数。
+
+完整代码在 \url{https://github.com/soundadam/sc589-audio}。
+本实验的脚本与报告在 \path{coursework/E04-overlap-save}，C 代码在 \path{firmware/audio_loopback/dsp}。
+
+\section{原理}
+
+\subsection{重叠保留法}
+
+长度 $L$ 的 FIR $y[n]=\sum_{k=0}^{L-1}h[k]\,x[n-k]$ 逐点计算时每个输出要 $L$ 次乘加。
+重叠保留法把它换成频域乘法：取帧长 $N=\FftLen$、帧移 $B=N/2=\Hop$，每来 $B$ 个新样本，
+把它们接在上一帧的后 $B$ 个样本之后组成一帧 $x_m[n]$（$n=0,\dots,N-1$），算
+\[
+  y_m = \mathrm{IFFT}_N\bigl(\mathrm{FFT}_N(x_m)\cdot H\bigr),\qquad H=\mathrm{FFT}_N(h\text{ 补零到 }N).
+\]
+频域相乘对应 $N$ 点循环卷积。当 $L\le B+1$ 时，循环卷积只在前 $L-1\le B$ 个点上绕回，后 $B$ 个点与线性卷积相同，
+保留这 $B$ 个点作为本帧输出，丢弃前 $B$ 个。课件中帧长为帧移的 2 倍，与此一致。
+
+本实现在一帧凑齐 $B$ 个新样本后才计算，所以输出比逐点 FIR 晚 $B$ 个样本：$y_\text{OLS}[n]=y[n-B]$，
+即 \Hop{} 个 \LowRate~Hz 样本、\HopMs~ms。每段输出取出后按样本逐个送出，所以块大小（\BlockFrames{} 帧）
+与帧移不必成整数比。
+
+\paragraph{关于系数的倒序} 课件把时域 FIR 写成系数与按时间先后排列的输入缓冲的点积，所以把系数倒过来存。
+本实现的时域 FIR 用环形延时线，按 $h[k]\,x[n-k]$ 从最新样本往回走，与之等价，系数不用倒序；
+频域里做的是卷积而不是相关，$H$ 直接由 $h[0],h[1],\dots$ 补零后变换得到，同样不倒序。
+主机测试与 \texttt{scipy.signal.lfilter} 逐样本比较，确认了这一点。
+
+\subsection{分段（均匀分区）滤波}
+
+\LongOrder{} 阶 FIR 有 \LongTaps{} 个抽头，用一个帧移 \Hop{} 的 \FftLen{} 点变换装不下。
+把 $h$ 按 \Hop{} 个抽头一段切成 $P=\Parts$ 段 $h_p[k]=h[pB+k]$，则
+\[
+  y[n]=\sum_{p=0}^{P-1}\sum_{k=0}^{B-1}h_p[k]\,x[n-pB-k],
+\]
+第 $p$ 段就是一个 \ShortOrder{} 阶 FIR 作用在延迟 $pB$ 的输入上。延迟 $pB$ 正好是 $p$ 帧，
+所以第 $p$ 段用的输入谱就是 $p$ 帧之前那一帧的谱 $X_{m-p}$，不必重算。把最近 $P$ 帧的谱存在一条频域延时线里：
+\[
+  Y_m=\sum_{p=0}^{P-1}H_p\,X_{m-p},\qquad y_m=\mathrm{IFFT}_N(Y_m)\text{ 的后 }B\text{ 点}.
+\]
+每帧仍只做一次正变换、一次反变换，多出来的只是 $P$ 次谱相乘；延迟仍是 $B$ 个样本，
+而不是一次用 $2048$ 点变换处理整个滤波器时的 \LongTaps{} 个样本（\LongPlainMs~ms）。
+
+\subsection{实数 FFT}
+
+输入是实数，$N$ 点实数 FFT 用 $N/2$ 点复数 FFT 实现：把 $x[2n]+j\,x[2n+1]$ 当作 $N/2$ 个复数样本做基 2 时间抽取 FFT 得到 $Z[k]$，
+再由 $E[k]=\frac12(Z[k]+Z^*[M-k])$、$O[k]=\frac1{2j}(Z[k]-Z^*[M-k])$ 得 $X[k]=E[k]+W_N^kO[k]$（$M=N/2$）。
+只需存 $k=0,\dots,N/2$ 共 $N/2+1$ 个频点。反变换把这一步倒过来，再做复数反变换，不除以 $N$；
+$1/N$ 预先乘进滤波器的谱 $H_p$ 里，每帧省掉 $N$ 次乘法。
+
+\section{系统框图}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=5mm and 6mm, font=\small]
+  \node (in) {输入};
+  \node[block, right=of in] (dec) {降采样\\$\Factor:1$};
+  \node[block, right=of dec] (buf) {凑满 $B$ 点\\拼成 $N$ 点帧};
+  \node[block, right=of buf] (fft) {FFT\\$N=\FftLen$};
+  \node[block, right=of fft] (mac) {$\sum_p H_p X_{m-p}$};
+  \node[block, right=of mac] (ifft) {IFFT\\取后 $B$ 点};
+  \node[block, below=7mm of mac] (fdl) {频域延时线\\$X_m,\dots,X_{m-P+1}$};
+  \node[block, anchor=north] (int) at ($(ifft |- fdl.south)+(0,-8mm)$) {升采样\\$1:\Factor$};
+  \node[left=of int] (out) {输出};
+  \draw[sig] (in) -- (dec);
+  \draw[sig] (dec) -- (buf);
+  \draw[sig] (buf) -- (fft);
+  \draw[sig] (fft) -- (mac);
+  \draw[sig] (fft.south) |- (fdl.west);
+  \draw[sig] (fdl) -- (mac);
+  \draw[sig] (mac) -- (ifft);
+  \draw[sig] (ifft) -- (int);
+  \draw[sig] (int) -- (out);
+  \node[draw, dashed, rounded corners, inner sep=2mm, fit=(buf) (fft) (mac) (ifft) (fdl),
+        label={[font=\small]above:@ \LowRate~Hz，每 $B=\Hop$ 点一帧}] {};
+\end{tikzpicture}
+\caption{处理链。偶数声道用 \ShortOrder{} 阶（$P=1$，即普通重叠保留），奇数声道用 \LongOrder{} 阶（$P=\Parts$）}
+\label{fig:system}
+\end{figure}
+
+四个声道各自有帧缓冲和频域延时线，FFT 的旋转因子表和滤波器的谱 $H_p$ 共用。
+一帧对应 \SampleRate~Hz 上 $\Factor B$ 帧，即 \HopBlocks{} 个 \BlockFrames{} 帧的块。
+如果四个声道同时凑满一帧，四次 FFT 会挤在每 \HopBlocks{} 块里的同一块中，其余块几乎空闲；
+所以初始化时把第 $c$ 个声道的帧边界错开 $cB/4$ 个样本（\texttt{OlsStagger}），
+任何一块里最多只有一个声道做变换，单块的最坏耗时降为原来的约四分之一。
+错开前帧缓冲全为零，错开的部分相当于补了零输入，输出仍是 $y[n-B]$。
+
+\section{滤波器设计}
+
+系数由 \path{design.py} 用 SciPy 计算，写成 \path{ols_coeffs.c}。
+
+降采样与升采样共用一个工作在 \SampleRate~Hz 的原型低通（Kaiser 窗，\ProtoTaps{} 个抽头），
+通带到 \PassHz~Hz，起伏 \PassRippleDb~dB；\StopHz~Hz 以上最大增益 \StopDb~dB（图~\ref{fig:prototype}）。
+E02 用的是另一组系数，两个实验各自的系数互不影响。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{prototype.pdf}
+\caption{降采样与升采样共用的原型低通，虚线为 \PassHz~Hz 与 \StopHz~Hz}
+\label{fig:prototype}
+\end{figure}
+
+\LowRate~Hz 上的两个 FIR 都是截止 \FirCutoffHz~Hz 的线性相位低通（Kaiser 窗），
+\ShortOrder{} 阶 \ShortTaps{} 个抽头，\LongOrder{} 阶 \LongTaps{} 个抽头；
+2.5~kHz 以上最大增益分别为 \ShortStopDb~dB 和 \LongStopDb~dB（图~\ref{fig:fir}）。
+阶数高的过渡带更窄、阻带更深，代价是更长的群时延：整个链的时延（原型两次、帧移 $B$、FIR 的群时延）
+偶数声道约 \ShortDelayMs~ms，奇数声道约 \LongDelayMs~ms。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{fir.pdf}
+\caption{\LowRate~Hz 上两个 FIR 的幅频特性，虚线为 \FirCutoffHz~Hz}
+\label{fig:fir}
+\end{figure}
+
+\section{关键代码}
+
+重叠保留与分段滤波共用一份代码，$P=1$ 时就是普通重叠保留。\texttt{OlsProcess} 把输入逐个写进帧的后半，
+同时送出上一帧留下的输出；凑满 $B$ 点后 \texttt{OlsFrame} 做一次 FFT，存进频域延时线，按上式累加各段的乘积，
+再做一次反变换：
+
+\lstinputlisting[language=C]{\src/ols.c}
+
+实数 FFT 的复数部分是基 2 时间抽取，先按位反序重排，再逐级做蝶形；分裂步骤见 \path{rfft.c}：
+
+\lstinputlisting[language=C, linerange={41-106}]{\src/rfft.c}
+
+每个声道的处理就是三步：
+
+\begin{lstlisting}[language=C]
+nLow = DecimatorProcess(&Dec16k[nChannel], pIn, nFrames, Low16k);
+OlsProcess(&Ols[nChannel], Low16k, Low16k, nLow);
+(void)InterpolatorProcess(&Int16k[nChannel], Low16k, pOut, nFrames);
+\end{lstlisting}
+
+逐点 FIR 用作效率比较的基准，与 E01 相同（\path{fir.c}）：环形延时线，按绕回点拆成两段循环，乘累加里不取模。
+
+\section{结果与分析}
+
+\subsection{与 SciPy 的比较}
+
+处理链的 C 代码不依赖板卡，在 Mac 上编译后逐块调用 \texttt{AudioProcess}，输入输出都是 24 位定点，
+与板上运行的是同一份代码。参考结果由 \texttt{scipy.signal.lfilter} 按同样的步骤算出：原型滤波后每 \Factor{} 取一，
+FIR 滤波，延迟 $B$，插零后再用 $\Factor h$ 滤波。\NoiseSeconds~s 均匀噪声下，C 代码与参考的最大差
+偶数声道 \ChainErrShort、奇数声道 \ChainErrLong，是 24 位定点量化（$2^{-23}\approx\num{1.2e-7}$）的量级；
+按 \BlockFrames{} 帧和按 7 帧分块处理，结果\BlockInvariant。图~\ref{fig:chain} 是整个链的冲激响应。
+这些比较都在 \texttt{make check} 里作为单元测试运行（\path{test_chain.py}、\path{dsp/test/test_ols.c}）。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{chain.pdf}
+\caption{整个链（\SampleRate~Hz 进出）的冲激响应：Mac 上的 C 代码与 SciPy 参考}
+\label{fig:chain}
+\end{figure}
+
+\subsection{运算量}
+
+按本实现计实数乘法：$N=\FftLen$ 的实数 FFT（$M=\Hop$ 点复数 FFT 加分裂步骤）\FftMuls{} 次，反变换 \IfftMuls{} 次，
+一段谱相乘 $4(M+1)=\SpecMuls$ 次。每帧产出 $B$ 个输出，折合每个输出样本：
+\begin{itemize}
+  \item \ShortOrder{} 阶：逐点 \ShortTaps{} 次，重叠保留 \OlsShortMuls{} 次，约为 $1/\MulRatioShort$；
+  \item \LongOrder{} 阶：逐点 \LongTaps{} 次，分段重叠保留 \OlsLongMuls{} 次，约为 $1/\MulRatioLong$。
+\end{itemize}
+逐点 FIR 的运算量随 $L$ 线性增长，重叠保留只随 $\log L$ 增长（图~\ref{fig:efficiency}）。
+分段时帧移固定为 \Hop{}，FFT 的开销不变，每多一段只多一次谱相乘（每个输出约 4 次乘法），
+所以 \LongOrder{} 阶分段（\OlsLongMuls）与一次 2048 点变换（\OlsLongPlainMuls）相差不大，延迟却只有后者的四分之一。
+$L$ 很小时（几十个抽头以下）逐点 FIR 反而更省。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{efficiency.pdf}
+\caption{每个输出样本的实数乘法次数，虚线为 $L=\ShortTaps$ 和 $L=\LongTaps$}
+\label{fig:efficiency}
+\end{figure}
+
+\ifdefined\BoardRun
+\subsection{板上运行}
+
+板上程序启动时，先把单位冲激送进两种滤波器（不经过降采样和升采样），把 \LowRate~Hz 上的输出打到串口：
+与设计系数延迟 $B$ 后相比，最大差 \ShortOrder{} 阶 \BoardOlsErr、\LongOrder{} 阶 \BoardPartErr（图~\ref{fig:board}）。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{board_impulse.pdf}
+\caption{板上运算的冲激响应与设计系数（延迟 $B$）}
+\label{fig:board}
+\end{figure}
+
+再用周期计数器测各种实现处理同样输入的周期数（CCLK $=\CclkMHz$~MHz，\SampleRate~Hz 下每帧预算 \CyclesBudget{} 个周期）：
+
+\begin{table}[H]
+\centering
+\caption{各实现的周期数}
+\begin{tabular}{lrr}
+\toprule
+ & 周期 & 每样本周期 \\
+\midrule
+逐点 FIR，\ShortOrder{} 阶，\Hop{} 点 & \FirShortCycles & \FirShortPerSample \\
+重叠保留，\ShortOrder{} 阶，\Hop{} 点 & \OlsShortCycles & \OlsShortPerSample \\
+逐点 FIR，\LongOrder{} 阶，\Hop{} 点 & \FirLongCycles & \FirLongPerSample \\
+分段重叠保留，\LongOrder{} 阶，\Hop{} 点 & \OlsLongCycles & \OlsLongPerSample \\
+\midrule
+自写实数 FFT，\FftLen{} 点 & \FftCycles & \FftPerSample \\
+自写实数 IFFT，\FftLen{} 点 & \IfftCycles & \IfftPerSample \\
+CCES \texttt{rfft512} & \LibFftCycles & \LibFftPerSample \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+重叠保留比逐点 FIR 快 \ShortSpeedup{} 倍（\ShortOrder{} 阶）和 \LongSpeedup{} 倍（\LongOrder{} 阶），
+都比乘法次数之比（\MulRatioShort{} 和 \MulRatioLong{}）小。原因是两种循环每次乘法花的周期差得多：
+逐点 FIR 的乘累加是连续访存的单重循环，编译器能流水化，每次乘法约 \FirShortPerMul{} 个周期（\LongOrder{} 阶 \FirLongPerMul）；
+重叠保留每次乘法约 \OlsShortPerMul{} 个周期（分段 \OlsLongPerMul），其中 FFT 约 \FftPerMul{} 个，
+时间花在位反序重排、跨步取旋转因子和蝶形的下标计算上，以及帧之间的数据拷贝。
+所以 \ShortOrder{} 阶时 FFT 的固定开销只勉强被摊薄，而 \LongOrder{} 阶分段时每多一段只多一次谱相乘，
+优势才明显：分段滤波处理 4 倍长的滤波器，每样本周期只比 \ShortOrder{} 阶重叠保留多 $\OlsLongPerSample-\OlsShortPerSample$ 个。
+
+CCES 库的 \texttt{rfft512} 用 \LibFftCycles{} 个周期，与自写的 FFT（\FftCycles）几乎相同（比值 \LibFftRatio）。
+整个 \texttt{AudioProcess}（四声道，含降采样与升采样）
+在一个帧移的 \AudioFrames{} 帧里共用 \AudioCycles{} 个周期，平均每帧 \AudioPerFrame{} 个，占预算的 \AudioLoad\%；
+最忙的一块（\PeakFrames{} 帧）用 \PeakCycles{} 个周期，占该块预算的 \PeakLoad\%。
+\else
+\subsection{板上运行}
+
+\textbf{（待测）}板上数据尚未采集。固件启动时会把两种滤波器的冲激响应，以及逐点 FIR、重叠保留、分段滤波、
+自写 FFT 与 CCES \texttt{rfft512} 的周期数打到串口；用 \texttt{make board EXPERIMENT=E04} 记下日志后
+重新运行 \texttt{make e04}，这一节会换成实测的冲激响应和周期数表。
+\fi
+
+\section{结论}
+
+重叠保留法把 FIR 的运算量从每样本 $L$ 次乘法降到 $O(\log L)$ 次，代价是 $B$ 个样本的延迟；
+分段滤波在帧移不变的前提下处理更长的滤波器，运算量几乎不增加，延迟仍由帧移决定。
+本实验的 C 代码在 Mac 上与 SciPy 逐样本一致，误差在 24 位量化以内。
+\ifdefined\BoardRun 板上实测，重叠保留对 \ShortOrder{} 阶快 \ShortSpeedup{} 倍、分段对 \LongOrder{} 阶快 \LongSpeedup{} 倍；FFT 每次乘法的周期数远高于逐点 FIR，所以滤波器越长，频域方法的优势越大。\fi
+
+\end{document}

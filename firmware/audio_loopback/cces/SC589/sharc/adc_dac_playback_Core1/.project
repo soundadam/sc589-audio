@@ -110,11 +110,6 @@
 			<locationURI>PARENT-4-PROJECT_LOC/dsp/biquad.h</locationURI>
 		</link>
 		<link>
-			<name>src/cplx.h</name>
-			<type>1</type>
-			<locationURI>PARENT-4-PROJECT_LOC/dsp/cplx.h</locationURI>
-		</link>
-		<link>
 			<name>src/board_setup.c</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.c</locationURI>
@@ -123,6 +118,31 @@
 			<name>src/board_setup.h</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/board_setup.h</locationURI>
+		</link>
+		<link>
+			<name>src/chain.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/chain.h</locationURI>
+		</link>
+		<link>
+			<name>src/chain_e02.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/chain_e02.c</locationURI>
+		</link>
+		<link>
+			<name>src/chain_e03.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/chain_e03.c</locationURI>
+		</link>
+		<link>
+			<name>src/chain_e04.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/chain_e04.c</locationURI>
+		</link>
+		<link>
+			<name>src/cplx.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/cplx.h</locationURI>
 		</link>
 		<link>
 			<name>src/fft.c</name>
@@ -195,6 +215,41 @@
 			<locationURI>PARENT-4-PROJECT_LOC/dsp/multirate_coeffs.h</locationURI>
 		</link>
 		<link>
+			<name>src/ols.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols.c</locationURI>
+		</link>
+		<link>
+			<name>src/ols.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols.h</locationURI>
+		</link>
+		<link>
+			<name>src/ols_coeffs.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols_coeffs.c</locationURI>
+		</link>
+		<link>
+			<name>src/ols_coeffs.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/ols_coeffs.h</locationURI>
+		</link>
+		<link>
+			<name>src/rfft.c</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/rfft.c</locationURI>
+		</link>
+		<link>
+			<name>src/rfft.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/rfft.h</locationURI>
+		</link>
+		<link>
+			<name>src/speed.h</name>
+			<type>1</type>
+			<locationURI>PARENT-4-PROJECT_LOC/dsp/speed.h</locationURI>
+		</link>
+		<link>
 			<name>src/tone.c</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/dsp/tone.c</locationURI>
@@ -213,26 +268,6 @@
 			<name>src/uart_console.h</name>
 			<type>1</type>
 			<locationURI>PARENT-4-PROJECT_LOC/platform/uart_console.h</locationURI>
-		</link>
-		<link>
-			<name>system/services/stdio/adi_stdio.c</name>
-			<type>1</type>
-			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio.c</locationURI>
-		</link>
-		<link>
-			<name>system/services/stdio/adi_stdio_jtag.c</name>
-			<type>1</type>
-			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_jtag.c</locationURI>
-		</link>
-		<link>
-			<name>system/services/stdio/adi_stdio_null.c</name>
-			<type>1</type>
-			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_null.c</locationURI>
-		</link>
-		<link>
-			<name>system/services/stdio/adi_stdio_uart.c</name>
-			<type>1</type>
-			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_uart.c</locationURI>
 		</link>
 		<link>
 			<name>system/SC5xx_EZ-Kit/drivers/adc/adau1979/adi_adau1979.c</name>
@@ -263,6 +298,26 @@
 			<name>system/SC5xx_EZ-Kit/drivers/dac/adau1962a/adi_adau1962a_regs.h</name>
 			<type>1</type>
 			<locationURI>COM_ANALOG_CROSSCORE_ADDINS_SC58X_EZ_KIT_2_0_2_LOC/src/drivers/dac/adau1962a/adi_adau1962a_regs.h</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio.c</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio_jtag.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_jtag.c</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio_null.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_null.c</locationURI>
+		</link>
+		<link>
+			<name>system/services/stdio/adi_stdio_uart.c</name>
+			<type>1</type>
+			<locationURI>CCES/SHARC/lib/src/services/Source/stdio/adi_stdio_uart.c</locationURI>
 		</link>
 	</linkedResources>
 	<variableList>

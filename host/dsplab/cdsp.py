@@ -9,23 +9,14 @@ without restarting Python. Each build gets its own file name, because a
 process cannot unload a library it has loaded and would keep the old code.
 
 The samples go through AudioProcess() exactly as on the board: 24-bit fixed
-point in and out, 64-frame blocks, filter state carried between blocks.
-
-Each experiment replaces AudioProcess(), so an earlier experiment's report
-names the commit its code is in:
-
-    y = cdsp.process(x, rev="d8747bb")
-
-and the dsp/ sources are taken from that commit (git archive) instead of the
-working tree.
+point in and out, 64-frame blocks, filter state carried between blocks. Each
+call names the experiment whose chain it runs (AudioProcessSelect()).
 """
 
 import ctypes
 import hashlib
-import io
 import subprocess
 import sys
-import tarfile
 from pathlib import Path
 
 import numpy as np
@@ -49,31 +40,10 @@ def _sources(dsp):
     return sorted(dsp.glob("*.c")) + sorted(dsp.glob("*.h"))
 
 
-def _checkout(rev):
-    """The firmware include root as of commit `rev`, unpacked under build/cdsp/."""
-    sha = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--verify", "%s^{commit}" % rev],
-                         capture_output=True, text=True)
-    if sha.returncode != 0:
-        raise SystemExit("cdsp: no commit %r in this repository" % rev)
-    sha = sha.stdout.strip()
-    root = OUT / ("src-%s" % sha[:12])
-    if not root.exists():
-        tar = subprocess.run(["git", "-C", str(REPO), "archive", sha, "firmware/audio_loopback/dsp"],
-                             capture_output=True, check=True).stdout
-        tmp = root.with_suffix(".tmp")
-        with tarfile.open(fileobj=io.BytesIO(tar)) as t:
-            t.extractall(tmp, filter="data")
-        (tmp / "firmware" / "audio_loopback").rename(root)
-    return root
-
-
-def library(rev=None):
-    """The library built from the dsp/ sources, compiled if needed.
-
-    rev     a git commit to take the sources from; None for the working tree
-    """
-    root = ROOT if rev is None else _checkout(rev)
-    dsp = root / "dsp"
+def library():
+    """The library built from the dsp/ sources, compiled if needed."""
+    root = ROOT
+    dsp = DSP
     digest = hashlib.sha256()
     for p in _sources(dsp):
         digest.update(p.name.encode())
@@ -91,6 +61,8 @@ def library(rev=None):
     lib = ctypes.CDLL(str(path))
     lib.AudioProcessInit.argtypes = []
     lib.AudioProcessInit.restype = None
+    lib.AudioProcessSelect.argtypes = [ctypes.c_uint32]
+    lib.AudioProcessSelect.restype = ctypes.c_int32
     lib.AudioProcess.argtypes = [
         np.ctypeslib.ndpointer(np.int32, flags="C_CONTIGUOUS"),
         np.ctypeslib.ndpointer(np.int32, flags="C_CONTIGUOUS"),
@@ -111,12 +83,12 @@ def from_s24(x):
     return np.asarray(x, dtype=float) / S24_SCALE
 
 
-def process(x, *, block=BLOCK_FRAMES, init=True, rev=None):
+def process(x, *, experiment, block=BLOCK_FRAMES, init=True):
     """Run x through AudioProcess() in blocks of `block` frames.
 
-    x       frames x channels, or one dimension for a single channel; floats in [-1, 1)
-    init    clear the filter state first; False continues the previous stream
-    rev     git commit whose dsp/ sources to run; None for the working tree
+    x           frames x channels, or one dimension for a single channel; floats in [-1, 1)
+    experiment  2, 3 or 4: the chain to run (AUDIO_PROCESS_E0x)
+    init        clear the filter state first; False continues the previous stream
 
     Returns floats of the same shape as x.
     """
@@ -126,9 +98,10 @@ def process(x, *, block=BLOCK_FRAMES, init=True, rev=None):
     src = np.ascontiguousarray(to_s24(frames))
     dst = np.empty_like(src)
 
-    lib = library(rev)
+    lib = library()
     if init:
-        lib.AudioProcessInit()
+        if lib.AudioProcessSelect(experiment) != 0:
+            raise ValueError("no chain for experiment %r" % (experiment,))
     for start in range(0, len(src), block):
         n = min(block, len(src) - start)
         out = np.empty((n, channels), dtype=np.int32)
@@ -137,7 +110,7 @@ def process(x, *, block=BLOCK_FRAMES, init=True, rev=None):
     return from_s24(dst).reshape(x.shape)
 
 
-def impulse(n, *, channels=2, rev=None):
+def impulse(n, *, experiment, channels=2):
     """First n samples of each channel's response to a unit impulse at half scale.
 
     Half scale keeps the IIR's overshoot clear of saturation; the result is
@@ -146,4 +119,4 @@ def impulse(n, *, channels=2, rev=None):
     """
     x = np.zeros((n, channels))
     x[0] = 0.5
-    return process(x, rev=rev) / 0.5
+    return process(x, experiment=experiment) / 0.5

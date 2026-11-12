@@ -224,7 +224,7 @@ def board_macros(run, fft):
     s += _macro("LibIfftErr", _sci(err))
 
     s += _macro("LoopbackLsb", "%d" % run.diffs["loopback_lsb"])
-    mac = cdsp.impulse(len(run.impulse["identity"]))
+    mac = cdsp.impulse(len(run.impulse["identity"]), experiment=3)
     s += _macro("BoardIrErr", _sci(max(np.abs(run.impulse["identity"] - mac[:, 0]).max(),
                                        np.abs(run.impulse["lowpass"] - mac[:, 1]).max())))
     plot.impulse([plot.Series("声道 0（FFT→IFFT）", impulse=mac[:, 0], measured=run.impulse["identity"]),
@@ -267,14 +267,14 @@ def main():
     plot_spectrum(x, fft.real_forward(x), OUT / "spectrum.pdf")
 
     noise = NOISE_LEVEL * rng.uniform(-1, 1, (NOISE_FRAMES, 2))
-    y = cdsp.process(noise)
+    y = cdsp.process(noise, experiment=3)
     lsb = np.abs(np.round((y[N:, 0] - cdsp.from_s24(cdsp.to_s24(noise[:-N, 0]))) * cdsp.S24_SCALE)).max()
     plot_loopback(cdsp.from_s24(cdsp.to_s24(noise[:, 0])), y[:, 0], OUT / "loopback.pdf")
 
     t = np.arange(DEMO_FRAMES) / FS
     demo = np.zeros((DEMO_FRAMES, 2))
     demo[:, 1] = DEMO_LEVEL * (np.sin(2 * np.pi * DEMO_KEEP_HZ * t) + np.sin(2 * np.pi * DEMO_CUT_HZ * t))
-    out = cdsp.process(demo)[:, 1]
+    out = cdsp.process(demo, experiment=3)[:, 1]
     f, din, dout = plot_demo(demo[N:, 1], out[N:], OUT / "demo.pdf")
     near = lambda hz: np.abs(f - hz) < 50
     above = (f > design.KEEP_HZ + 2 * design.bin_hz()) & ~near(DEMO_CUT_HZ)

@@ -8,18 +8,13 @@
  *            24-bit value in [-2^23, 2^23 - 1]; no shifting or masking is
  *            needed before the conversion.
  *
- *            E03: every channel is cut into frames of FFT_N samples. A full
- *            frame is transformed (FftRealForward), its spectrum optionally
- *            weighted, and transformed back (FftRealInverse); the result is
- *            played out while the next frame fills, so the output lags the
- *            input by exactly FFT_N samples. Even channels leave the spectrum
- *            as it is, and come out as their input delayed. Odd channels keep
- *            only the bins up to FFT_KEEP_HZ (FftBinGain), a low-pass applied
- *            frame by frame with no overlap between frames.
+ *            Each channel of a block is de-interleaved into a contiguous
+ *            float array, run through the selected experiment's chain
+ *            (chain.h), then converted back and re-interleaved.
  */
 
 #include "audio_process.h"
-#include "fft.h"
+#include "chain.h"
 
 /* Full scale of a 24-bit sample: 1.0f maps to 2^23 */
 #define S24_SCALE       (8388608.0f)
@@ -28,14 +23,25 @@
 #define S24_MAX         (8388607.0f)
 #define S24_MIN         (-8388608.0f)
 
-/* The frame each channel is filling, and the one it is playing out */
-static float FrameIn[AUDIO_PROCESS_MAX_CHANNELS][FFT_N];
-static float FrameOut[AUDIO_PROCESS_MAX_CHANNELS][FFT_N];
-/* Position in both frames; the same for every channel */
-static uint32_t nPos;
+typedef struct
+{
+	uint32_t nExperiment;
+	void (*pInit)(void);
+	void (*pChannel)(uint32_t nChannel, const float *pIn, float *pOut, uint32_t nFrames);
+} Chain;
 
-/* Spectrum of the frame being processed */
-static Cplx Spectrum[FFT_REAL_BINS];
+static const Chain Chains[] =
+{
+	{ AUDIO_PROCESS_E02, ChainE02Init, ChainE02Channel },
+	{ AUDIO_PROCESS_E03, ChainE03Init, ChainE03Channel },
+	{ AUDIO_PROCESS_E04, ChainE04Init, ChainE04Channel },
+};
+
+static const Chain *pSelected = &Chains[2];
+
+/* One channel of the current chunk: input and output */
+static float ChannelIn[AUDIO_PROCESS_MAX_FRAMES];
+static float ChannelOut[AUDIO_PROCESS_MAX_FRAMES];
 
 /*
  * Converts a sign-extended 24-bit sample to float in [-1.0, 1.0).
@@ -67,27 +73,24 @@ static inline int32_t FloatToS24(float fSample)
 	return (int32_t)((fScaled >= 0.0f) ? (fScaled + 0.5f) : (fScaled - 0.5f));
 }
 
-/*
- * FFT, spectrum weighting on odd channels, IFFT: FrameIn[nChannel] to
- * FrameOut[nChannel].
- */
-static void ProcessFrame(uint32_t nChannel)
+int32_t AudioProcessSelect(uint32_t nExperiment)
 {
-	uint32_t k;
+	uint32_t nIndex;
 
-	FftRealForward(FrameIn[nChannel], Spectrum);
-	if ((nChannel % 2u) != 0u)
+	for (nIndex = 0u; nIndex < sizeof(Chains) / sizeof(Chains[0]); nIndex++)
 	{
-		for (k = 0u; k < FFT_REAL_BINS; k++)
+		if (Chains[nIndex].nExperiment == nExperiment)
 		{
-			Spectrum[k] = CplxScale(Spectrum[k], FftBinGain[k]);
+			pSelected = &Chains[nIndex];
+			AudioProcessInit();
+			return 0;
 		}
 	}
-	FftRealInverse(Spectrum, FrameOut[nChannel]);
+	return -1;
 }
 
 /*
- * Clears the frames, so the first FFT_N output samples are silence.
+ * Sets up the selected chain's filters and clears their state.
  *
  * Parameters
  *  None
@@ -98,18 +101,7 @@ static void ProcessFrame(uint32_t nChannel)
  */
 void AudioProcessInit(void)
 {
-	uint32_t nChannel;
-	uint32_t n;
-
-	for (nChannel = 0u; nChannel < AUDIO_PROCESS_MAX_CHANNELS; nChannel++)
-	{
-		for (n = 0u; n < FFT_N; n++)
-		{
-			FrameIn[nChannel][n] = 0.0f;
-			FrameOut[nChannel][n] = 0.0f;
-		}
-	}
-	nPos = 0u;
+	pSelected->pInit();
 }
 
 /*
@@ -128,38 +120,46 @@ void AudioProcessInit(void)
 void AudioProcess(const int32_t *pIn, int32_t *pOut,
                   uint32_t nFrames, uint32_t nChannels)
 {
-	uint32_t nActive = (nChannels < AUDIO_PROCESS_MAX_CHANNELS) ? nChannels : AUDIO_PROCESS_MAX_CHANNELS;
+	uint32_t nDone;
+	uint32_t nChunk;
 	uint32_t nFrame;
 	uint32_t nChannel;
 	uint32_t nIndex;
 
-	for (nFrame = 0u; nFrame < nFrames; nFrame++)
+	/* blocks longer than the work buffers are taken a chunk at a time */
+	for (nDone = 0u; nDone < nFrames; nDone += nChunk)
 	{
-		for (nChannel = 0u; nChannel < nChannels; nChannel++)
+		nChunk = nFrames - nDone;
+		if (nChunk > AUDIO_PROCESS_MAX_FRAMES)
 		{
-			nIndex = (nFrame * nChannels) + nChannel;
-			if (nChannel >= AUDIO_PROCESS_MAX_CHANNELS)
-			{
-				/* no frame buffers for this channel: pass it through */
-				pOut[nIndex] = pIn[nIndex];
-			}
-			else
-			{
-				/* take the input first, so pOut may be pIn, then play out the
-				   last frame's sample at this position */
-				FrameIn[nChannel][nPos] = S24ToFloat(pIn[nIndex]);
-				pOut[nIndex] = FloatToS24(FrameOut[nChannel][nPos]);
-			}
+			nChunk = AUDIO_PROCESS_MAX_FRAMES;
 		}
 
-		nPos++;
-		if (nPos == FFT_N)
+		for (nChannel = 0u; nChannel < nChannels; nChannel++)
 		{
-			for (nChannel = 0u; nChannel < nActive; nChannel++)
+			if (nChannel >= AUDIO_PROCESS_MAX_CHANNELS)
 			{
-				ProcessFrame(nChannel);
+				/* no filter state for this channel: pass it through */
+				for (nFrame = 0u; nFrame < nChunk; nFrame++)
+				{
+					nIndex = ((nDone + nFrame) * nChannels) + nChannel;
+					pOut[nIndex] = pIn[nIndex];
+				}
+				continue;
 			}
-			nPos = 0u;
+
+			/* de-interleave and convert, then the chain */
+			for (nFrame = 0u; nFrame < nChunk; nFrame++)
+			{
+				ChannelIn[nFrame] = S24ToFloat(pIn[((nDone + nFrame) * nChannels) + nChannel]);
+			}
+			pSelected->pChannel(nChannel, ChannelIn, ChannelOut, nChunk);
+
+			/* convert back and re-interleave */
+			for (nFrame = 0u; nFrame < nChunk; nFrame++)
+			{
+				pOut[((nDone + nFrame) * nChannels) + nChannel] = FloatToS24(ChannelOut[nFrame]);
+			}
 		}
 	}
 }

@@ -21,9 +21,9 @@ macOS 上不能编译；调试器 ICE 的驱动也没有 Mac 版。我手边只�
 | 目录 | 内容 |
 |---|---|
 | `firmware/audio_loopback/` | ADC → 处理 → DAC 回环程序，入口 `adc_dac_playback.c` 不在仓库里（见下一节） |
-| `firmware/audio_loopback/dsp/` | 信号处理，纯 C99，不依赖 CCES 和板卡：`audio_process.c` 是当前实验（E03）的处理链，按 32 点帧调用 `fft.c`（FFT/IFFT，复数运算在 `cplx.h`）；`fft_tables.*` 由 `coursework/E03-fft/design.py` 生成；E02 的 `multirate.c`、`biquad.c`、`tone.c` 仍在，E02 的报告用 `cdsp` 从它的提交里取当时的 `audio_process.c`；`multirate_coeffs.*` 由 `coursework/E02-multirate/design.py` 生成，`lowpass_coeffs.*`（E01，`fir.c` 的测试也用它）由 `coursework/E01-fir-iir/design.py` 生成 |
+| `firmware/audio_loopback/dsp/` | 信号处理，纯 C99，不依赖 CCES 和板卡：`audio_process.c` 按所选实验调用 `chain_e02.c`（`multirate.c` 降采样与升采样、`biquad.c`、`tone.c`）、`chain_e03.c`（`fft.c` 32 点 FFT/IFFT，复数运算在 `cplx.h`）或 `chain_e04.c`（`multirate.c`、`rfft.c`、`ols.c` 重叠保留与分段滤波）；`fft_tables.*`、`multirate_coeffs.*`、`ols_coeffs.*` 分别由 `coursework/E03-fft/design.py`、`coursework/E02-multirate/design.py`、`coursework/E04-overlap-save/design.py` 生成，`lowpass_coeffs.*`（E01，`fir.c` 的测试也用它）由 `coursework/E01-fir-iir/design.py` 生成 |
 | `firmware/audio_loopback/dsp/test/` | `dsp/` 的主机端测试 |
-| `firmware/audio_loopback/platform/` | 串口控制台（`uart_console.c`）；`filter_report.c` 在启动时把滤波器的冲激响应和周期数打到控制台 |
+| `firmware/audio_loopback/platform/` | 串口控制台（`uart_console.c`）；`filter_report.c` 在启动时把 E04 滤波器的冲激响应和周期数打到控制台（E01、E02、E03 的版本分别在 tag `e01`、`e02`、`e03` 上） |
 | `firmware/audio_loopback/cces/SC589/sharc/` | 三个核的 CCES 工程，源码通过链接引用 `firmware/audio_loopback/` 下的文件 |
 | `host/board/` | Mac 端的 UART 启动和日志工具（`uart_boot.py`、`uart_log.py`）及其测试 |
 | `host/dsplab/` | Mac 端的滤波器设计与分析包（系数生成 C 表、频响、读板卡日志、作图，以及在 Mac 上跑 `dsp/` 的 C 代码：`cdsp`、`wavrun`），由根目录 `pyproject.toml` 用 uv 管理 |

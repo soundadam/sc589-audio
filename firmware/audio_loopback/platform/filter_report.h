@@ -1,30 +1,29 @@
 /*!
  * @file      filter_report.h
- * @brief     Checks the E03 FFT against the CCES library on the board and
- *            prints the result.
+ * @brief     Measures E04's overlap-save filters on the board and prints the result.
  *
- *            Runs the own transforms (dsp/fft.h) and the library's rfft32,
- *            cfft32 and ifft32 (trans.h) on the same 32-point frame, sends an
- *            impulse and noise through AudioProcess(), times each transform
- *            outside the audio path, and prints one comma-separated line per
- *            value:
+ *            Runs a 16 kHz impulse through the plain and the partitioned
+ *            overlap-save filters and times each way of filtering one hop
+ *            (OLS_HOP low-rate samples) outside the audio path, then times
+ *            AudioProcess() over the blocks of one hop. Prints one
+ *            comma-separated line per value:
  *
  *              clock,cclk,<Hz>                     core clock the cycles count
- *              fft,<name>,<k>,<re>,<im>            entry k of a vector
  *              ir,<name>,<n>,<h[n]>                impulse response, n from 0
- *              diff,<name>,<value>                 a measured difference
- *              cycles,<name>,<frames>,<cycles>     fewest core cycles of 8 runs
+ *              cycles,<stage>,<frames>,<cycles>    core cycles for <frames> samples
  *
- *            Vectors: re_in and im_in (the test frame), rfft_own (bins
- *            0 .. N/2), rifft_own, cfft_own, ifft_own (of cfft_own), and the
- *            library's rfft_lib, cfft_lib and ifft_lib (of cfft_own), each
- *            printed as returned so that the host reads off their scaling.
- *            Impulse responses: identity (channel 0) and lowpass (channel 1).
- *            diff,loopback_lsb is the largest difference, in 24-bit LSB,
- *            between an even channel's output and its input 32 samples
- *            earlier, on noise. Cycles: each transform on one frame, frame
- *            for one odd channel's FFT, gain and IFFT, and audio_process for
- *            a whole block of NUM_CHANNELS channels.
+ *            The impulse responses are ols (order 255) and partitioned
+ *            (order 1023) at 16 kHz, OLS_HOP samples late: h[n - OLS_HOP].
+ *            The <stage>s are, for one hop:
+ *
+ *              fir255, fir1023         point-by-point FIR (fir.h)
+ *              ols, partitioned        overlap-save, P = 1 and P = 4 (ols.h)
+ *              fft512, ifft512         RealFftForward(), RealFftInverse() of one frame
+ *              rfft512                 the CCES run-time library's rfft512() (trans.h)
+ *
+ *            and audio_process for the FRAMES_PER_BUFFER-frame blocks of one
+ *            hop at the codec rate, all NUM_CHANNELS channels, with
+ *            audio_process_peak its costliest block.
  *            host/dsplab/boardlog.py reads these lines from a console log.
  */
 
@@ -33,7 +32,7 @@
 
 /*
  * Prints the report on the console. Call after UartConsoleInit() and before
- * the audio path starts; leaves audio_process's frames cleared.
+ * the audio path starts; leaves audio_process's filter state cleared.
  */
 void FilterReport(void);
 

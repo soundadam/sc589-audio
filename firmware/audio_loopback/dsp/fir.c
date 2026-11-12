@@ -5,6 +5,7 @@
 
 #include <string.h>
 #include "fir.h"
+#include "speed.h"
 
 void FirInit(FirFilter *pFir, const float *pCoeffs, float *pDelay, uint32_t nTaps)
 {
