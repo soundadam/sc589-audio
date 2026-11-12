@@ -1,0 +1,240 @@
+% E03 report. Built by `make e03`; numbers come from build/E03/results.tex.
+\documentclass[zihao=-4, linespread=1.5, fontset=none]{ctexart}
+\usepackage{labreport}
+
+\graphicspath{{../../build/E03/}}
+\input{../../build/E03/results.tex}
+\input{../../build/E03/author.tex}
+
+\newcommand{\fftc}{../../firmware/audio_loopback/dsp/fft.c}
+
+\title{实验 E03\quad 实时 FFT 和 IFFT 的实现}
+\author{\ReportAuthor\quad\url{https://github.com/soundadam}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{实验内容}
+
+在 ADSP-SC589 EZ-Board 的音频回环（$f_s=\SampleRate$~Hz）中实现 $N=\FftN$ 点的实时 FFT 和 IFFT：
+\begin{itemize}
+  \item 旋转因子等公共变量预先初始化，运行时不调用 $\sin$、$\cos$；
+  \item 复数运算自行编写；
+  \item 与 CCES 运行库 \texttt{<trans.h>} 中的 \texttt{rfft32}、\texttt{cfft32}、\texttt{ifft32} 比较结果与效率。
+\end{itemize}
+
+完整代码（固件、设计与作图脚本、本报告的源文件）在
+\url{https://github.com/soundadam/sc589-audio}，本实验在其中的
+\path{coursework/E03-fft} 目录下，FFT 本身在 \path{firmware/audio_loopback/dsp/fft.c}。
+
+\section{原理}
+
+\subsection{基 2 时间抽取 FFT}
+
+$N$ 点 DFT 与 IDFT 为
+\[
+X[k]=\sum_{n=0}^{N-1}x[n]\,W_N^{nk},\qquad
+x[n]=\frac1N\sum_{k=0}^{N-1}X[k]\,W_N^{-nk},\qquad W_N=e^{-j2\pi/N}.
+\]
+把 $x[n]$ 按序号奇偶分成两个 $N/2$ 点序列，其 DFT 记为 $G[k]$、$H[k]$，则
+\[
+X[k]=G[k]+W_N^kH[k],\qquad X[k+N/2]=G[k]-W_N^kH[k],\qquad k=0,\dots,N/2-1,
+\]
+这就是一个蝶形：一次复数乘法、两次复数加减。逐级分解到 2 点，共 $\log_2N=\FftStages$ 级，每级 $N/2$ 个蝶形，
+合计 \Butterflies{} 个蝶形、\FftMuls{} 次实数乘法和 \FftAdds{} 次实数加法；直接按定义计算 DFT 要 $N^2$ 次复数乘法，
+即 \DftMuls{} 次实数乘法。时间抽取使输入要先按比特倒序重排，之后各级蝶形可以原位进行。
+IFFT 用同样的蝶形，只把 $W_N^k$ 换成 $W_N^{-k}$，最后乘 $1/N$。
+
+\subsection{实序列的 FFT}
+
+音频是实数。把 $N$ 个实样本两两组成 $N/2$ 个复数 $z[m]=x[2m]+jx[2m+1]$，做一次 $M=N/2=\FftHalf$ 点 FFT 得 $Z[k]$。
+偶、奇样本的 DFT $E[k]$、$O[k]$ 都是实序列的 DFT，共轭对称，因此可以从 $Z$ 中分离：
+\[
+E[k]=\frac{Z[k]+Z^*[M-k]}2,\qquad
+O[k]=-j\,\frac{Z[k]-Z^*[M-k]}2,
+\]
+\[
+X[k]=E[k]+W_N^kO[k],\qquad k=0,\dots,M.
+\]
+$X[N-k]=X^*[k]$，所以只需算出 $0$--$N/2$ 共 $N/2+1$ 个频点。IFFT 把这几步倒过来：
+由 $X[k]$ 和 $X^*[M-k]$ 求出 $E[k]$、$O[k]$，合成 $Z[k]=E[k]+jO[k]$，做 $M$ 点 IFFT，实部即偶数样本，虚部即奇数样本。
+这样一次实 FFT 的核心只是 \HalfButterflies{} 个蝶形，加上分离的 $M-1$ 次复数乘法，共约 \RealMuls{} 次实数乘法，约为复数 FFT 的一半。
+
+\subsection{预先计算的表}
+
+FFT 用到的常量都由 \path{design.py} 一次算好，写成 \texttt{const} 数组 \path{fft_tables.c}，编译进固件：
+\begin{itemize}
+  \item 旋转因子 $W_N^k=\cos\frac{2\pi k}N-j\sin\frac{2\pi k}N$，$k=0,\dots,N/2-1$，存 \texttt{FftCos}、\texttt{FftSin} 两张表；
+        $s$ 点的子变换用到的 $W_s^j=W_N^{jN/s}$ 按步长 $N/s$ 取同一张表；IFFT 用其共轭；
+  \item $N$ 点与 $N/2$ 点的比特倒序表 \texttt{FftBitRev}、\texttt{FftBitRevHalf}；
+  \item 频域处理用的每个频点的增益 \texttt{FftBinGain}。
+\end{itemize}
+运行时不调用任何三角函数，也不在启动时初始化。
+
+\subsection{实时处理链}
+
+\texttt{AudioProcess} 每次收到 64 帧的块，逐样本地把输入写进每个声道 \FftN{} 点的输入帧、同时从上一帧的输出中读出一个样本；
+输入帧写满（\FrameMs~ms）就对每个声道做一次 FFT$\to$处理$\to$IFFT（图~\ref{fig:system}）。
+偶数声道不做处理，输出是输入延迟 $N=\FftN$ 个样本的副本，用来检验 FFT 与 IFFT 互逆；
+奇数声道把 \KeepHz~Hz 以上的频点置零（每点 \BinHz~Hz，保留前 \KeepBins{} 个），演示一个频域操作。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=6mm and 6mm, font=\small]
+  \node (in) {输入};
+  \node[block, right=of in] (buf) {写入\\\FftN{} 点帧};
+  \node[block, right=of buf] (fft) {实 FFT\\\FftHalf{} 点复数};
+  \node[block, anchor=west, minimum width=6.8em] (id) at ($(fft.east)+(9mm,10mm)$) {偶数声道\\不变};
+  \node[block, anchor=west, minimum width=6.8em] (lp) at ($(fft.east)+(9mm,-10mm)$) {奇数声道\\$k\cdot\BinHz\le\KeepHz$};
+  \node[block, anchor=west] (ifft) at ($(fft.east -| id.east)+(9mm,0)$) {实 IFFT};
+  \node[block, right=of ifft] (out) {输出帧\\延迟 \FftN};
+  \node[right=of out] (o) {输出};
+  \draw[sig] (in) -- (buf);
+  \draw[sig] (buf) -- (fft);
+  \draw[sig] (fft.east) -- ++(4mm,0) |- (id.west);
+  \draw[sig] (fft.east) -- ++(4mm,0) |- (lp.west);
+  \draw[sig] (id.east) -- ++(4mm,0) |- ($(ifft.west)+(0,1mm)$);
+  \draw[sig] (lp.east) -- ++(4mm,0) |- ($(ifft.west)+(0,-1mm)$);
+  \draw[sig] (ifft) -- (out);
+  \draw[sig] (out) -- (o);
+  \node[draw, rounded corners, inner sep=3mm, fit=(buf) (id) (lp) (out),
+        label={[font=\small]below:\texttt{AudioProcess}（SHARC 核 1），每 \FftN{} 个样本一帧}] {};
+\end{tikzpicture}
+\caption{处理链}
+\label{fig:system}
+\end{figure}
+
+\section{关键代码}
+
+复数类型是两个 \texttt{float}，实部在前，与 CCES 的 \texttt{complex\_float} 布局相同。加、减、乘、共轭、
+乘 $j$ 等运算写成 \path{cplx.h} 中的 \texttt{static inline} 函数，例如复数乘法：
+\begin{lstlisting}[language=C]
+static inline Cplx CplxMul(Cplx a, Cplx b)
+{
+    return CplxMake((a.re * b.re) - (a.im * b.im), (a.re * b.im) + (a.im * b.re));
+}
+\end{lstlisting}
+
+各级蝶形（\path{fft.c}），输入已按比特倒序排好；\texttt{Twiddle} 只是查表：
+\lstinputlisting[language=C, firstline=\RadixFirst, lastline=\RadixLast, firstnumber=\RadixFirst]{\fftc}
+
+实 FFT：打包、$M$ 点 FFT、分离：
+\lstinputlisting[language=C, firstline=\RealFwdFirst, lastline=\RealFwdLast, firstnumber=\RealFwdFirst]{\fftc}
+
+实 IFFT：
+\lstinputlisting[language=C, firstline=\RealInvFirst, lastline=\RealInvLast, firstnumber=\RealInvFirst]{\fftc}
+
+\section{结果分析}
+
+FFT 的 C 代码不依赖板卡，在 Mac 上编译后与 numpy 的双精度 FFT 比较；\texttt{AudioProcess} 也在 Mac 上逐块调用，
+输入输出都是 24 位定点，与板上运行的是同一份代码。
+
+\subsection{运算精度}
+
+\Trials{} 帧在 $[-1,1)$ 内均匀分布的随机输入上，各变换与 numpy 的最大绝对误差为：
+
+\begin{table}[H]
+\centering
+\caption{与双精度结果的最大误差（单精度浮点）}
+\begin{tabular}{lll}
+\toprule
+变换 & 函数 & 最大误差 \\
+\midrule
+复数 FFT & \texttt{FftForward} & \CfftErr \\
+复数 IFFT & \texttt{FftInverse} & \IfftErr \\
+复数 FFT$\to$IFFT & & \CroundErr \\
+实 FFT & \texttt{FftRealForward} & \RfftErr \\
+实 IFFT & \texttt{FftRealInverse} & \RifftErr \\
+实 FFT$\to$IFFT & & \RroundErr \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+频点幅度可达 $N$，FFT 的误差约为其 $2^{-24}$ 量级的若干倍，是单精度舍入误差在 \FftStages{} 级上的累积；
+往返误差 \RroundErr{} 相当于 24 位样本的 \RroundLsb{} 个 LSB。图~\ref{fig:spectrum} 是一帧随机信号的频谱。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{spectrum.pdf}
+\caption{一帧随机信号的 $|X[k]|$：numpy 与 \texttt{FftRealForward}，下为二者之差}
+\label{fig:spectrum}
+\end{figure}
+
+\subsection{实时回环}
+
+\NoiseSeconds~s 的噪声（幅度 0.9 倍满量程）送入偶数声道，输出与延迟 \FftN{} 个样本的输入逐样本相比，最大相差 \LoopbackMacLsb{} 个 LSB
+（图~\ref{fig:loopback}），即 FFT 与 IFFT 在实时链中互逆，帧与帧之间衔接无误。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{loopback.pdf}
+\caption{偶数声道的输入与延迟 \FftN{} 点后的输出，虚线为帧边界}
+\label{fig:loopback}
+\end{figure}
+
+\subsection{频域处理}
+
+奇数声道输入 \DemoKeepHz~Hz 与 \DemoCutHz~Hz 两个单频，输出中前者变化 \DemoKeepDb~dB，后者被压低 \DemoCutDb~dB（图~\ref{fig:demo}）。
+压低得不彻底、\KeepHz~Hz 以上仍有最高约 \DemoSpreadDb~dBFS 的成分，原因是帧不重叠、不加窗：
+两个频率都不是 \BinHz~Hz 的整数倍，在 \FftN{} 点矩形窗内泄漏到所有频点，置零只去掉了泄漏的一部分；
+逐帧修改频谱又在帧边界造成不连续。要得到干净的滤波，应当加窗并重叠相加（或用重叠保留法做线性卷积），
+这已超出本实验 FFT/IFFT 本身的范围。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{demo.pdf}
+\caption{奇数声道输入与输出的频谱（Blackman 窗），虚线为 \KeepHz~Hz}
+\label{fig:demo}
+\end{figure}
+
+\ifdefined\BoardRun
+\subsection{与 CCES 运行库比较}
+
+板上程序启动时在同一帧随机数据上分别运行自写的变换和 \texttt{rfft32}、\texttt{cfft32}、\texttt{ifft32}，
+把结果打到串口。自写代码在板上的结果与 numpy 相比：实 FFT \BoardRfftErr，复数 FFT \BoardCfftErr，
+复数 IFFT \BoardIfftErr，实 IFFT \BoardRifftErr；与 Mac 上同一份 C 代码相差 \BoardMacDiff。
+
+运行库的比例由输出向量拟合得到，不预先假定：\texttt{cfft32} 相对 DFT 的增益为 \LibCfftGain，拟合后误差 \LibCfftErr；
+\texttt{rfft32} 增益 \LibRfftGain，误差 \LibRfftErr，它\LibRfftUpper；
+\texttt{ifft32} 相对 $\frac1N\sum X[k]W_N^{-nk}$ 的增益为 \LibIfftGain，误差 \LibIfftErr。
+
+偶数声道噪声回环在板上最大相差 \LoopbackLsb{} 个 LSB；两个声道的冲激响应与 Mac 上的结果最大相差 \BoardIrErr（图~\ref{fig:board}）。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{board_impulse.pdf}
+\caption{冲激响应：Mac 上的 C 代码与板上运算}
+\label{fig:board}
+\end{figure}
+
+周期数在 CCLK $=\CclkMHz$~MHz 下测得，取 8 次中最少的一次。每个样本的预算为 \CyclesBudget{} 个周期，
+一帧 \FftN{} 个样本为 \FrameBudget{} 个周期。
+
+\begin{table}[H]
+\centering
+\caption{\FftN{} 点变换的周期数（自写代码为 Debug 配置）}
+\begin{tabular}{lrrr}
+\toprule
+ & 自写 & 运行库 & 自写/运行库 \\
+\midrule
+复数 FFT & \CfftOwnCycles & \CfftLibCycles & \CfftRatio \\
+复数 IFFT & \IfftOwnCycles & \IfftLibCycles & \IfftRatio \\
+实 FFT & \RfftOwnCycles & \RfftLibCycles & \RfftRatio \\
+实 IFFT & \RifftOwnCycles & -- & \\
+一帧（实 FFT、增益、实 IFFT） & \FrameCycles & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+自写的实 FFT 比复数 FFT 少用 \RealSaving\% 的周期。运行库是针对 SHARC+ 优化过的汇编，用到 SIMD 和零开销循环；
+自写代码按 Debug 配置编译，没有优化，每个复数运算都经过函数调用和存取内存。整个 \texttt{AudioProcess}
+（\AudioFrames{} 帧、4 声道）用 \AudioCycles{} 个周期，平均每帧 \AudioPerFrame{} 个，占预算的 \AudioLoad\%。
+\else
+\subsection{与 CCES 运行库比较}
+
+板上运行尚未进行：与 \texttt{rfft32}、\texttt{cfft32}、\texttt{ifft32} 的结果和周期数比较，
+在板上运行 \path{make board EXPERIMENT=E03} 后由 \path{build/E03/board.log} 生成，届时本节给出。
+\fi
+
+\end{document}

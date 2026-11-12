@@ -39,7 +39,7 @@ endef
 
 # E01 reads the impulse responses and cycle counts in build/E01/board.log, from
 # make board EXPERIMENT=E01
-.PHONY: e01 e02
+.PHONY: e01 e02 e03
 
 e01:
 	$(call report,E01,E01-fir-iir)
@@ -48,3 +48,8 @@ e01:
 # numbers when build/E02/board.log is there
 e02:
 	$(call report,E02,E02-multirate)
+
+# E03 runs dsp/fft.c on the Mac against numpy and adds the comparison with the
+# CCES library (rfft32, cfft32, ifft32) when build/E03/board.log is there
+e03:
+	$(call report,E03,E03-fft)

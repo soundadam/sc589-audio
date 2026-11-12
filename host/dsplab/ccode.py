@@ -12,7 +12,7 @@ import numpy as np
 
 @dataclass
 class Table:
-    """One `const float` array.
+    """One `const` array, of float unless `ctype` says otherwise.
 
     name        C identifier of the array
     dim         array dimension as written in C, e.g. "LOWPASS_IIR_SECTIONS * BIQUAD_COEFFS"
@@ -20,6 +20,7 @@ class Table:
     comment     what the array holds, placed above its declaration
     defines     (macro, value) pairs the header defines before the declaration
     per_line    entries per source line, e.g. one second-order section
+    ctype       C element type: "float", or an integer type such as "uint16_t"
     """
 
     name: str
@@ -28,11 +29,15 @@ class Table:
     comment: str
     defines: list[tuple[str, int]] = field(default_factory=list)
     per_line: int = 4
+    ctype: str = "float"
 
 
-def _array_body(values, per_line):
-    # 9 significant digits round-trip any float32
-    cells = ["%.8ef" % v for v in np.asarray(values, dtype=np.float32).ravel()]
+def _array_body(values, per_line, ctype="float"):
+    if ctype == "float":
+        # 9 significant digits round-trip any float32
+        cells = ["%.8ef" % v for v in np.asarray(values, dtype=np.float32).ravel()]
+    else:
+        cells = ["%du" % v for v in np.asarray(values, dtype=np.int64).ravel()]
     width = max(map(len, cells))
     rows = [", ".join(c.rjust(width) for c in cells[i:i + per_line])
             for i in range(0, len(cells), per_line)]
@@ -64,15 +69,17 @@ def write(stem, tables, *, brief, details, generator, includes=()):
     ]
     head += [(" *            " + l).rstrip() for l in (details.strip() + "\n\n" + notice).splitlines()]
     head += [" */", "", "#ifndef %s" % guard, "#define %s" % guard, ""]
+    if any(t.ctype != "float" for t in tables):
+        head.append("#include <stdint.h>")
     for inc in includes:
         head.append('#include "%s"' % inc)
-    if includes:
+    if includes or any(t.ctype != "float" for t in tables):
         head.append("")
     for t in tables:
         head.append(_comment(t.comment))
         for macro, value in t.defines:
             head.append("#define %s (%du)" % (macro, value))
-        head.append("extern const float %s[%s];" % (t.name, t.dim))
+        head.append("extern const %s %s[%s];" % (t.ctype, t.name, t.dim))
         head.append("")
     head.append("#endif /* %s */" % guard)
 
@@ -89,7 +96,8 @@ def write(stem, tables, *, brief, details, generator, includes=()):
         '#include "dsp/%s.h"' % stem.name,
     ]
     for t in tables:
-        src += ["", "const float %s[%s] =" % (t.name, t.dim), "{", _array_body(t.values, t.per_line), "};"]
+        src += ["", "const %s %s[%s] =" % (t.ctype, t.name, t.dim), "{",
+                _array_body(t.values, t.per_line, t.ctype), "};"]
 
     stem.with_suffix(".h").write_text("\n".join(head) + "\n")
     stem.with_suffix(".c").write_text("\n".join(src) + "\n")

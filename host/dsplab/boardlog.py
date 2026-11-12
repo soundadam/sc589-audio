@@ -26,11 +26,24 @@ class BoardRun:
     cclk_hz: int | None = None
     impulse: dict[str, np.ndarray] = field(default_factory=dict)
     cycles: dict[str, Cycles] = field(default_factory=dict)
+    vectors: dict[str, np.ndarray] = field(default_factory=dict)    # complex
+    diffs: dict[str, float] = field(default_factory=dict)
+
+
+def _gather(kind, by_name, convert=lambda v: v):
+    out = {}
+    for name, by_index in by_name.items():
+        n = max(by_index) + 1
+        if sorted(by_index) != list(range(n)):
+            raise ValueError("%s %r is missing samples; the console dropped lines?" % (kind, name))
+        out[name] = np.array([convert(by_index[i]) for i in range(n)])
+    return out
 
 
 def parse(lines):
     run = BoardRun()
     samples = {}
+    vectors = {}
     for line in lines:
         fields = line.strip().split(",")
         if fields[0] == "clock" and len(fields) == 3 and fields[1] == "cclk":
@@ -39,11 +52,12 @@ def parse(lines):
             samples.setdefault(fields[1], {})[int(fields[2])] = float(fields[3])
         elif fields[0] == "cycles" and len(fields) == 4:
             run.cycles[fields[1]] = Cycles(int(fields[2]), int(fields[3]))
-    for name, by_index in samples.items():
-        n = max(by_index) + 1
-        if sorted(by_index) != list(range(n)):
-            raise ValueError("impulse response %r is missing samples; the console dropped lines?" % name)
-        run.impulse[name] = np.array([by_index[i] for i in range(n)])
+        elif fields[0] == "fft" and len(fields) == 5:
+            vectors.setdefault(fields[1], {})[int(fields[2])] = complex(float(fields[3]), float(fields[4]))
+        elif fields[0] == "diff" and len(fields) == 3:
+            run.diffs[fields[1]] = float(fields[2])
+    run.impulse = _gather("impulse response", samples)
+    run.vectors = _gather("vector", vectors)
     return run
 
 
